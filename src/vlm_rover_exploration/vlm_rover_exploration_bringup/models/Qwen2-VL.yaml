@@ -1,0 +1,19 @@
+/**:
+  ros__parameters:
+    model:
+      repo: bartowski/Qwen2-VL-2B-Instruct-GGUF
+      filename: Qwen2-VL-2B-Instruct-Q4_K_M.gguf
+    mmproj:
+      repo: bartowski/Qwen2-VL-2B-Instruct-GGUF
+      filename: mmproj-Qwen2-VL-2B-Instruct-f16.gguf
+    system_prompt_type: ChatML
+    context:
+      n_ctx: 8192
+      n_batch: 512
+      n_predict: 2048
+    gpu:
+      n_gpu_layers: 5
+    cpu:
+      n_threads: 4
+    server:
+      n_slots: 1

@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>vlm_rover_exploration</name>
+  <version>0.0.0</version>
+  <description>Package for rover exploration</description>
+  <maintainer email="mgons@unileon.es">Miguel Ángel González Santamarta</maintainer>
+  <license>MIT</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>rover_gazebo</depend>
+  <depend>llama_bringup</depend>
+  <depend>yasmin</depend>
+  <depend>yasmin_ros</depend>
+  <depend>yasmin_viewer</depend>
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

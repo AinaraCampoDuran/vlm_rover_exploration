@@ -1,0 +1,13 @@
+use_llava: True
+
+n_ctx: 8192
+n_batch: 512
+n_gpu_layers: 37
+n_threads: -1
+n_predict: -1
+
+model_repo: "mradermacher/InternVL3-8B-GGUF"
+model_filename: "InternVL3-8B.Q5_K_M.gguf"
+
+mmproj_repo: "mradermacher/InternVL3-8B-GGUF"
+mmproj_filename: "InternVL3-8B.mmproj-f16.gguf"
