@@ -185,9 +185,10 @@ class GenerateMapImageState(MonitorState):
         robot_rel_y = int((-(robot_y - init_y) / resolution) * scale) + (cropped_height * scale // 2)
 
         # Draw position history
-        if len(self.position_history) > 1:
+        history_to_draw = self.position_history[-3:]
+        if len(history_to_draw) > 1:
             pts = []
-            for px, py in self.position_history:
+            for px, py in history_to_draw:
                 rel_x = int(((px - init_x) / resolution) * scale) + (cropped_width * scale // 2)
                 rel_y = int((-(py - init_y) / resolution) * scale) + (cropped_height * scale // 2)
                 pts.append([rel_x, rel_y])

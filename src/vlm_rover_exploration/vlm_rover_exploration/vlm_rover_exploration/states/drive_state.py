@@ -16,6 +16,7 @@
 
 from yasmin_ros import ActionState
 from yasmin.blackboard import Blackboard
+from yasmin_ros.basic_outcomes import SUCCEED
 from nav2_msgs.action import NavigateToPose
 
 
@@ -28,3 +29,12 @@ class DriveState(ActionState):
         goal = NavigateToPose.Goal()
         goal.pose = blackboard["waypoint"]
         return goal
+
+    def execute(self, blackboard: Blackboard) -> str:
+        outcome = super().execute(blackboard)
+        if "route_history" in blackboard and len(blackboard["route_history"]) > 0:
+            if outcome == SUCCEED:
+                blackboard["route_history"][-1]["status"] = "success"
+            else:
+                blackboard["route_history"][-1]["status"] = "failed"
+        return outcome

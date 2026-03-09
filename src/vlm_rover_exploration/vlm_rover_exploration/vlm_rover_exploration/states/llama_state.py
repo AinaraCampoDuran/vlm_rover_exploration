@@ -24,7 +24,7 @@ from cv_bridge import CvBridge
 import os
 import json
 from datetime import datetime
-
+import shutil
 
 class LlamaState(ActionState):
 
@@ -70,7 +70,7 @@ class LlamaState(ActionState):
                     "1. **Analyze**: Look at the Red Dot and the numbered frontier IDs on the map. Identify the unexplored areas.\n"
                     "2. **Global Strategy**: Decide a efficient strategy to explore the whole radius: Spiral, zig-zag, from center to border, etc.\n"
                     "3. **Local Strategy**: Decide if you should explore corners or gaps that should be closed now to avoid returning later or go to high-gain major areas.\n"
-                    "4. **Execute**: Select the frontier ID that represents the best target for your chosen strategy. You MUST choose one of the numbered IDs visible on the map. Select a frontier that is close to the robot. If the blue line is visible, use it to understand the rover's recent movement trend and follow the same logic. \n\n"
+                    "4. **Execute**: Select the frontier ID that represents the best target for your chosen strategy. You MUST choose one of the numbered IDs visible on the map. Select a frontier that is close to the robot. If the blue line is visible, use it to understand the rover's recent movement trend and follow the same logic. For example, if the blue line has a trend to the right, mantain the direction to avoid sudden oscilations \n\n"
                     "OUTPUT JSON:\n"
                     "- description_of_the_map: VERY SHORT description. Answer ONLY these questions directly: 1. Where is the robot? (center, bottom, right, etc.) 2. Where is the robot facing? (the arrow is pointing to the right, left, top, bottom, etc.) 3. How are the surroundings? (bottom partially explored, top unexplored, etc.) 4. Which frontier cells are visible? 5. What is the last trend of the robot? (going right, left, top, bottom, etc.). DO NOT explain the map shape. DO NOT explain what colors mean. DO NOT add extra text.\n"
                     "- chosen_strategy: Explain with details the chosen global and local strategies to explore the radius of the map. Why is the chosen frontier ID the best option? If the blue line is visible, does it make sense with the last trend of the robot? \n"
@@ -86,7 +86,7 @@ class LlamaState(ActionState):
         goal.images.append(self.cv_bridge.cv2_to_imgmsg(blackboard["map_image"]))
 
         # Sampling configuration and structured response schema
-        goal.sampling_config.temp = 0.2
+        goal.sampling_config.temp = 0.3
         goal.sampling_config.grammar_schema = """{
             "type": "object",
             "properties": {
@@ -119,9 +119,34 @@ class LlamaState(ActionState):
                 data = json.loads(response)
             except Exception:
                 data = {"raw_response": response}
-                
-            with open(f"llama_responses_{blackboard['log_name']}.json", "a") as f:
+            
+            # Get the path to the debug directory and make sure it exists
+            dir_name = f"debug_{blackboard['log_name']}"
+            os.makedirs(dir_name, exist_ok=True)
+            
+            # Save response
+            with open(os.path.join(dir_name, "llama_responses.json"), "a") as f:
                 f.write(json.dumps(data) + "\n")
+                
+            # Copy prompt and other context for debugging
+            llama_goal = self.create_llama_goal(blackboard)
+            prompt_data = {
+                "system_prompt": llama_goal.messages[0].content,
+                "user_prompt": llama_goal.messages[1].content,
+                "temp": llama_goal.sampling_config.temp,
+            }
+            with open(os.path.join(dir_name, "prompt_config.json"), "w") as f:
+                json.dump(prompt_data, f, indent=4)
+                
+            # Copy model configuration
+            try:
+                model_config_path = os.environ.get("VLM_MODEL_CONFIG_PATH")
+                if model_config_path and os.path.exists(model_config_path):
+                    shutil.copy(model_config_path, os.path.join(dir_name, "model_config.yaml"))
+                else:
+                    yasmin.YASMIN_LOG_WARN("VLM_MODEL_CONFIG_PATH not found or invalid.")
+            except Exception as e:
+                yasmin.YASMIN_LOG_WARN(f"Could not copy model configuration: {e}")
 
         except Exception as e:
             yasmin.YASMIN_LOG_ERROR(f"Failed to process LLaMA result: {e}")

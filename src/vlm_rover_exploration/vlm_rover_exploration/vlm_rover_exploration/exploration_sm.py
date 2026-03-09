@@ -81,7 +81,7 @@ def main():
         DriveState(),
         transitions={
             SUCCEED: "GENERATING_MAP_IMAGE",
-            ABORT: "DRIVING_TO_WAYPOINT", # Cambiar esto
+            ABORT: "GENERATING_NEXT_WP", # Cambiar esto
             CANCEL: SUCCEED,
         },
     )

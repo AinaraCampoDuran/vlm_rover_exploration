@@ -115,9 +115,16 @@ class ProcessResponseState(State):
                     cv2.LINE_AA,
                 )
 
-            # Draw circles at each visited waypoint (cyan)
+            # Draw circles at each visited waypoint (cyan for success, red for failed)
             for i, pt in enumerate(route_pts):
-                color = (255, 255, 0, 255) if i == 0 else (0, 255, 255, 255)  # Yellow=start, Cyan=waypoints
+                # Access the status of the waypoint, defaulting to success for backwards compatibility
+                status = route[i].get("status", "success")
+                if i == 0:
+                    color = (255, 255, 0, 255)  # Yellow=start
+                elif status == "failed":
+                    color = (0, 0, 255, 255)  # Red=failed
+                else:
+                    color = (0, 255, 255, 255)  # Cyan=waypoints
                 cv2.circle(map_image, pt, 2 * scale, color, -1)
 
             # Draw the current target waypoint (green, larger)

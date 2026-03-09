@@ -17,12 +17,14 @@ import os
 from launch import LaunchDescription
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
-from launch.actions import IncludeLaunchDescription
+from launch.actions import IncludeLaunchDescription, SetEnvironmentVariable
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 
 def generate_launch_description():
     package_directory = get_package_share_directory("vlm_rover_exploration_bringup")
+
+    model_config_file = os.path.join(package_directory, "models", "Qwen3-VL.yaml")
 
     base_model = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -31,7 +33,7 @@ def generate_launch_description():
             )
         ),
         launch_arguments={
-            "params_file": os.path.join(package_directory, "models", "Qwen3-VL.yaml"),
+            "params_file": model_config_file,
             "executable": "llava_node",
         }.items(),
     )
@@ -62,6 +64,7 @@ def generate_launch_description():
     )
 
     ld = LaunchDescription()
+    ld.add_action(SetEnvironmentVariable("VLM_MODEL_CONFIG_PATH", model_config_file))
     ld.add_action(base_model)
     ld.add_action(rover_moon)
     ld.add_action(exploration_sm_cmd)
