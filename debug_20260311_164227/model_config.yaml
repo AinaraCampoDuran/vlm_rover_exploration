@@ -1,3 +1,4 @@
+
 /**:
   ros__parameters:
       # Context / inference parameters
@@ -18,10 +19,11 @@
     prompt:
       system_prompt_type: ChatML
 
-    model:
-      repo: "Qwen/Qwen3-VL-2B-Instruct-GGUF"
-      filename: "Qwen3VL-2B-Instruct-Q4_K_M.gguf"
+    model: 
+      repo: "mradermacher/SpaceThinker-Qwen2.5VL-3B-GGUF"
+      filename: "SpaceThinker-Qwen2.5VL-3B.Q4_K_M.gguf"
     mmproj:
-      repo: "Qwen/Qwen3-VL-2B-Instruct-GGUF"
-      filename: "mmproj-Qwen3VL-2B-Instruct-F16.gguf"
+      repo: "mradermacher/SpaceThinker-Qwen2.5VL-3B-GGUF"
+      filename: "SpaceThinker-Qwen2.5VL-3B.mmproj-f16.gguf"
     system_prompt_type: ChatML
+

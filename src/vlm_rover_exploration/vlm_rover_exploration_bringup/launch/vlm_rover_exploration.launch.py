@@ -24,7 +24,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 def generate_launch_description():
     package_directory = get_package_share_directory("vlm_rover_exploration_bringup")
 
-    model_config_file = os.path.join(package_directory, "models", "Qwen3-VL.yaml")
+    model_config_file = os.path.join(package_directory, "models", "InternVL3.yaml")
 
     base_model = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -52,7 +52,6 @@ def generate_launch_description():
         executable="exploration_sm",
         name="exploration_sm",
         output="screen",
-        parameters=[{"use_sim_time": True}],
     )
 
     yasmin_viewer_cmd = Node(
@@ -60,7 +59,7 @@ def generate_launch_description():
         executable="yasmin_viewer_node",
         name="yasmin_viewer_node",
         output="screen",
-        parameters=[{"port": 5000, "use_sim_time": True}],
+        parameters=[{"port": 5000}],
     )
 
     ld = LaunchDescription()

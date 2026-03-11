@@ -19,11 +19,11 @@
     prompt:
       system_prompt_type: ChatML
 
-    model:
+    model: 
       repo: "mradermacher/SpaceThinker-Qwen2.5VL-3B-GGUF"
-      filename: "spacethinker-qwen2.5VL-3B-F16.gguf"
+      filename: "SpaceThinker-Qwen2.5VL-3B.Q4_K_M.gguf"
     mmproj:
-      repo: "remyxai/SpaceThinker-Qwen2.5VL-3B"
-      filename: "spacethinker-qwen2.5vl-3b-vision.gguf"
+      repo: "mradermacher/SpaceThinker-Qwen2.5VL-3B-GGUF"
+      filename: "SpaceThinker-Qwen2.5VL-3B.mmproj-f16.gguf"
     system_prompt_type: ChatML
 

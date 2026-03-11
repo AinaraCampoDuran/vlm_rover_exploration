@@ -104,12 +104,18 @@ class ProcessResponseState(State):
                 py = int(center_y - ((point["y"] - init_y) * pixels_per_meter))
                 route_pts.append((px, py))
 
-            # Draw lines connecting the route points (magenta)
-            for i in range(1, len(route_pts)):
+            # Filter points to only connect successful ones and the current target
+            successful_route_pts = [
+                pt for i, pt in enumerate(route_pts)
+                if route[i].get("status", "success") != "failed"
+            ]
+
+            # Draw lines connecting the successful route points (magenta)
+            for i in range(1, len(successful_route_pts)):
                 cv2.line(
                     map_image,
-                    route_pts[i - 1],
-                    route_pts[i],
+                    successful_route_pts[i - 1],
+                    successful_route_pts[i],
                     (255, 0, 255, 255),  # Magenta
                     max(1, scale // 2),
                     cv2.LINE_AA,
