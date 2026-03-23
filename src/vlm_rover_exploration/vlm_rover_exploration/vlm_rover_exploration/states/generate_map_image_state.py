@@ -80,7 +80,7 @@ class GenerateMapImageState(MonitorState):
         image_height_m = blackboard["image_height_m"]
         scale = blackboard["scale_factor"]
 
-        # --- Add margin in meters ---
+        # Add margin in meters
         margin_m = 1  # You can set to 2 or 3 as needed
         alpha = 0.6  # Set your desired alpha value
 
@@ -109,8 +109,8 @@ class GenerateMapImageState(MonitorState):
             last_x, last_y = self.position_history[-1]
             if np.hypot(robot_x - last_x, robot_y - last_y) > 0.1:
                 self.position_history.append((robot_x, robot_y))
-                # Keep only last 100 points
-                if len(self.position_history) > 100:
+                # Keep only last 5 points
+                if len(self.position_history) > 5:
                     self.position_history.pop(0)
 
         init_x, init_y = self.initial_position
@@ -167,7 +167,7 @@ class GenerateMapImageState(MonitorState):
         blackboard["center_y"] = center_y
         font = cv2.FONT_HERSHEY_SIMPLEX
 
-        # --- Draw exploration area circle (excluding margin) ---
+        # Draw exploration area circle (excluding margin)
         exploration_radius_m = min(image_width_m, image_height_m) / 2
         exploration_radius_px = int(exploration_radius_m * pixels_per_meter)
         overlay = color_img.copy()
@@ -176,7 +176,7 @@ class GenerateMapImageState(MonitorState):
             (center_x, center_y),
             exploration_radius_px,
             (0, 165, 255, 255),  # Orange with alpha
-            thickness=3 * scale,
+            thickness=2 * scale,
         )
         cv2.addWeighted(overlay, alpha, color_img, 1 - alpha, 0, color_img)
 
@@ -185,16 +185,32 @@ class GenerateMapImageState(MonitorState):
         robot_rel_y = int((-(robot_y - init_y) / resolution) * scale) + (cropped_height * scale // 2)
 
         # Draw position history
-        history_to_draw = self.position_history[-3:]
+        history_to_draw = self.position_history
         if len(history_to_draw) > 1:
             pts = []
             for px, py in history_to_draw:
                 rel_x = int(((px - init_x) / resolution) * scale) + (cropped_width * scale // 2)
                 rel_y = int((-(py - init_y) / resolution) * scale) + (cropped_height * scale // 2)
-                pts.append([rel_x, rel_y])
-            pts = np.array(pts, np.int32)
-            pts = pts.reshape((-1, 1, 2))
-            cv2.polylines(color_img, [pts], isClosed=False, color=(255, 0, 0, 255), thickness=max(1, 2 * scale))
+                pts.append((rel_x, rel_y))
+            
+            n_pts = len(pts)
+            for i in range(1, n_pts):
+                # fraction from 0 (oldest) to 1 (newest)
+                frac = i / (n_pts - 1)
+                
+                # soften the fade so it's not too extreme
+                # interpolate color to MAGENTA so it contrasts with Blue IDs
+                b = 255
+                g = int(150 * (1 - frac))
+                r = 255
+                color = (b, g, r, 255)
+                
+                # interpolate thickness to be less thick overall
+                max_thick = max(1, 2 * scale)
+                min_thick = max(1, 1 * scale)
+                thick = int(min_thick + (max_thick - min_thick) * frac)
+                
+                cv2.line(color_img, pts[i - 1], pts[i], color, thick, cv2.LINE_AA)
 
         # Draw heading
         arrow_len = 10 * scale
@@ -209,9 +225,26 @@ class GenerateMapImageState(MonitorState):
             tipLength=0.4,
         )
 
-        # --- Draw Grid Overlay ---
+        # Draw failed navigation attempts as Red 'X' marks (short-term memory: last 5 attempts)
+        if "route_history" in blackboard and len(blackboard["route_history"]) > 0:
+            recent_history = blackboard["route_history"][-5:]
+            failed_routes = [r for r in recent_history if r.get("status") == "failed"]
+            for f_route in failed_routes:
+                f_x = f_route["x"]
+                f_y = f_route["y"]
+                f_rel_x = int(((f_x - init_x) / resolution) * scale) + (cropped_width * scale // 2)
+                f_rel_y = int((-(f_y - init_y) / resolution) * scale) + (cropped_height * scale // 2)
+                
+                thick = max(2, int(1.5 * scale))
+                length = 5 * scale
+                cross_color = (0, 0, 255, 255) # Red BGRA
+                cv2.line(color_img, (f_rel_x - length, f_rel_y - length), (f_rel_x + length, f_rel_y + length), cross_color, thick)
+                cv2.line(color_img, (f_rel_x - length, f_rel_y + length), (f_rel_x + length, f_rel_y - length), cross_color, thick)
+
+        # Draw Grid Overlay
         # Define fixed cell size in meters
         cell_size_meters = 2.0  # Reduced for higher precision
+        blackboard["cell_size_meters"] = cell_size_meters
 
         pixels_per_cell = int(cell_size_meters / resolution) * scale
 
@@ -227,44 +260,71 @@ class GenerateMapImageState(MonitorState):
         grid_mapping = {}
         label_counter = 1
         
-        # 1. Draw grid lines on overlay for translucency
-        overlay = color_img.copy()
-
-        for r in range(grid_rows):
-            for c in range(grid_cols):
-                # Pixel bounds
-                x1 = c * cell_w
-                y1 = r * cell_h
-                x2 = x1 + cell_w
-                y2 = y1 + cell_h
-                
-                if c == grid_cols - 1: x2 = img_w
-                if r == grid_rows - 1: y2 = img_h
-
-                # Draw rectangle (grid lines)
-                cv2.rectangle(overlay, (x1, y1), (x2, y2), (0, 255, 0, 255), scale)
+        # Draw Quadrants and labels
+        color_img_h, color_img_w = color_img.shape[:2]
         
-        # Blend grid lines - INCREASED OPACITY
-        cv2.addWeighted(overlay, 0.6, color_img, 0.4, 0, color_img)
+        # Draw central crosshair with true alpha blending (Cyan: B=255, G=255, R=0)
+        cross_overlay = color_img.copy()
+        cv2.line(cross_overlay, (0, center_y), (color_img_w, center_y), (255, 255, 0, 255), max(1, scale))
+        cv2.line(cross_overlay, (center_x, 0), (center_x, color_img_h), (255, 255, 0, 255), max(1, scale))
+        cv2.addWeighted(cross_overlay, 0.4, color_img, 0.6, 0, color_img)
+
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        text_scale = 1.8
+        text_thickness = 3
+        
+        # dynamic margin
+        margin_x = max(10, int(color_img_w * 0.05))
+        margin_y = max(10, int(color_img_h * 0.05))
+        
+        # TOP
+        top_text = "TOP"
+        tw, th = cv2.getTextSize(top_text, font, text_scale, text_thickness)[0]
+        cv2.putText(color_img, top_text, (center_x - tw//2, th + margin_y), font, text_scale, (0, 0, 0, 255), text_thickness + 2)
+        cv2.putText(color_img, top_text, (center_x - tw//2, th + margin_y), font, text_scale, (0, 255, 0, 255), text_thickness)
+        
+        # BOTTOM
+        bot_text = "BOTTOM"
+        tw, th = cv2.getTextSize(bot_text, font, text_scale, text_thickness)[0]
+        cv2.putText(color_img, bot_text, (center_x - tw//2, color_img_h - margin_y), font, text_scale, (0, 0, 0, 255), text_thickness + 2)
+        cv2.putText(color_img, bot_text, (center_x - tw//2, color_img_h - margin_y), font, text_scale, (0, 255, 0, 255), text_thickness)
+
+        # LEFT
+        left_text = "LEFT"
+        tw, th = cv2.getTextSize(left_text, font, text_scale, text_thickness)[0]
+        cv2.putText(color_img, left_text, (margin_x, center_y + th//2), font, text_scale, (0, 0, 0, 255), text_thickness + 2)
+        cv2.putText(color_img, left_text, (margin_x, center_y + th//2), font, text_scale, (0, 255, 0, 255), text_thickness)
+
+        # RIGHT
+        right_text = "RIGHT"
+        tw, th = cv2.getTextSize(right_text, font, text_scale, text_thickness)[0]
+        cv2.putText(color_img, right_text, (color_img_w - tw - margin_x, center_y + th//2), font, text_scale, (0, 0, 0, 255), text_thickness + 2)
+        cv2.putText(color_img, right_text, (color_img_w - tw - margin_x, center_y + th//2), font, text_scale, (0, 255, 0, 255), text_thickness)
 
         cv2.circle(color_img, (robot_rel_x, robot_rel_y), 4 * scale, (0, 0, 255, 255), -1)
 
-        #cv2.putText(
-        #    color_img,
-        #    "robot",
-        #    (
-        #        robot_rel_x - (7 * scale),
-        #        robot_rel_y - (5 * scale),
-        #    ),  # Position of the text on the image
-        #    cv2.FONT_HERSHEY_SIMPLEX,
-        #    0.2 * scale,  # Font scale
-        #    (0, 0, 0, 255),  # White color for the text
-        #    3,  # Thickness
-        #)
+        # Draw explicit ROBOT text label
+        robot_label = "ROBOT"
+        r_scale = 1.0
+        r_thick = 2
+        tw, th = cv2.getTextSize(robot_label, font, r_scale, r_thick)[0]
+        rx = robot_rel_x - (tw // 2)
+        ry = robot_rel_y - (6 * scale) # Positioned above the 4*scale radius red dot
+        # Text Outline (Black)
+        cv2.putText(color_img, robot_label, (rx, ry), font, r_scale, (0, 0, 0, 255), r_thick + 3)
+        # Text Fill (Red)
+        cv2.putText(color_img, robot_label, (rx, ry), font, r_scale, (0, 0, 255, 255), r_thick)
 
         # 2. Draw labels ONLY on frontier cells (where unknown meets free space)
         font = cv2.FONT_HERSHEY_SIMPLEX
         
+        # Mask out everything outside the exploration radius so edges don't trigger false frontiers
+        circle_mask = np.zeros_like(scaled_img)
+        cv2.circle(circle_mask, (center_x, center_y), exploration_radius_px, 255, -1)
+        
+        masked_scaled_img = scaled_img.copy()
+        masked_scaled_img[circle_mask == 0] = 50  # Dummy value (neither unknown=100 nor free=255)
+
         for r in range(grid_rows):
             for c in range(grid_cols):
                 
@@ -287,8 +347,8 @@ class GenerateMapImageState(MonitorState):
                     continue
 
                 # --- Frontier check ---
-                # Extract the cell region from the grayscale scaled image
-                cell_region = scaled_img[y1:y2, x1:x2]
+                # Extract the cell region from the masked grayscale scaled image
+                cell_region = masked_scaled_img[y1:y2, x1:x2]
                 total_pixels = cell_region.size
                 num_unknown = np.count_nonzero(cell_region == unknown_color)
                 num_free = np.count_nonzero(cell_region == free_color)
@@ -302,8 +362,6 @@ class GenerateMapImageState(MonitorState):
                     continue
                 if (num_unknown / total_pixels) < min_free_ratio:
                     continue
-                if (num_free / total_pixels) < min_free_ratio:
-                    continue
 
                 label = str(label_counter)
                 label_counter += 1
@@ -315,10 +373,10 @@ class GenerateMapImageState(MonitorState):
                 text_x = cx - text_size[0] // 2
                 text_y = cy + text_size[1] // 2
                 
-                # Text with White outline for maximum contrast against White/Gray/Red
-                # Outline (White)
+                # Text with Black outline for maximum contrast
+                # Outline (Black)
                 cv2.putText(
-                    color_img, label, (text_x, text_y), font, text_scale, (255, 255, 255, 255), thickness + 5
+                    color_img, label, (text_x, text_y), font, text_scale, (0, 0, 0, 255), thickness + 5
                 )
                 # Text (Blue)
                 cv2.putText(

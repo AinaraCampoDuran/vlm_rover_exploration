@@ -5,6 +5,8 @@ install
 log
 src/llama_ros
 src/yasmin
-src/ros2_rover
 map_image.png
+src/ros2_rover/*
+!src/ros2_rover/rover_navigation/
+!src/ros2_rover/rover_navigation/**
 notas

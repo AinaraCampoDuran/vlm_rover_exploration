@@ -24,7 +24,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 def generate_launch_description():
     package_directory = get_package_share_directory("vlm_rover_exploration_bringup")
 
-    model_config_file = os.path.join(package_directory, "models", "InternVL3.yaml")
+    model_config_file = os.path.join(package_directory, "models", "SpaceOm.yaml")
 
     base_model = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(

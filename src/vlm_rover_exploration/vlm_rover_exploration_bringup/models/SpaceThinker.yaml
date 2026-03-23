@@ -5,11 +5,11 @@
     context:
       n_ctx: 8192
       n_batch: 512
-      n_predict: 1024
+      n_predict: 256
 
     # GPU / backend parameters
     gpu:
-      n_gpu_layers: -1
+      n_gpu_layers: 20
 
     # CPU parameters
     cpu:
@@ -20,10 +20,10 @@
       system_prompt_type: ChatML
 
     model: 
-      repo: "mradermacher/SpaceThinker-Qwen2.5VL-3B-GGUF"
-      filename: "SpaceThinker-Qwen2.5VL-3B.Q4_K_M.gguf"
+      repo: "mradermacher/SpatialThinker-7B-i1-GGUF"
+      filename: "SpatialThinker-7B.i1-Q4_K_M.gguf"
+      
     mmproj:
-      repo: "mradermacher/SpaceThinker-Qwen2.5VL-3B-GGUF"
-      filename: "SpaceThinker-Qwen2.5VL-3B.mmproj-f16.gguf"
-    system_prompt_type: ChatML
+      repo: "mradermacher/SpatialThinker-7B-GGUF"
+      filename: "SpatialThinker-7B.mmproj-f16.gguf"
 

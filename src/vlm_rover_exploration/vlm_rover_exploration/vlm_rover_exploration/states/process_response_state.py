@@ -16,6 +16,7 @@
 
 import cv2
 import json
+import math
 import numpy as np
 import copy
 import yasmin
@@ -23,6 +24,7 @@ import os
 
 from yasmin import State
 from yasmin.blackboard import Blackboard
+from yasmin_ros.basic_outcomes import ABORT
 
 from geometry_msgs.msg import PoseStamped
 from tf_transformations import quaternion_from_euler
@@ -36,7 +38,7 @@ class ProcessResponseState(State):
     def __init__(self, debug: bool = True) -> None:
         self.counter = 0
         self.debug = debug
-        super().__init__([HAS_NEXT, HAS_NO_NEXT])
+        super().__init__([HAS_NEXT, HAS_NO_NEXT, ABORT])
 
     def execute(self, blackboard: Blackboard) -> str:
 
@@ -45,20 +47,26 @@ class ProcessResponseState(State):
         if response["is_fully_explored"]:
             return HAS_NO_NEXT
 
-        target_label = str(response["target_label"]) # Convert to string for lookup
-        target_yaw = response["target_yaw"] # Expecting radians
-
+        target_label = str(response["target_label"])
         grid_mapping = blackboard["grid_mapping"]
+        robot_position = blackboard["robot_position"]
+
+        # Validate target_label BEFORE using it
+        if target_label not in grid_mapping:
+            yasmin.YASMIN_LOG_WARN(
+                f"Label {target_label} not found in grid mapping. "
+            )
+            return ABORT
+
         waypoint = grid_mapping[target_label]
+
+        # Compute target_yaw programmatically 
+        dx = waypoint["x"] - robot_position[0]
+        dy = waypoint["y"] - robot_position[1]
+        target_yaw = math.atan2(dy, dx)
 
         msg = PoseStamped()
         msg.header.frame_id = "map"
-
-        if target_label not in grid_mapping:
-            yasmin.YASMIN_LOG_ERROR(f"Label {target_label} not found in grid mapping.")
-            return HAS_NO_NEXT
-
-        yasmin.YASMIN_LOG_INFO(f"Selected label {target_label}. Center coordinates: ({waypoint['x']:.2f}, {waypoint['y']:.2f})")
         msg.pose.position.x = float(waypoint["x"])
         msg.pose.position.y = float(waypoint["y"])
 
@@ -70,7 +78,7 @@ class ProcessResponseState(State):
 
         blackboard["waypoint"] = msg
 
-        # --- Route history tracking ---
+        # Route history tracking
         if "route_history" not in blackboard:
             blackboard["route_history"] = []
 
@@ -96,7 +104,7 @@ class ProcessResponseState(State):
             pixels_per_meter = int(1.0 / map_resolution) * scale
             init_x, init_y = blackboard["initial_position"]
 
-            # --- Draw the full route as a polyline ---
+            # Draw the full route as a polyline
             route = blackboard["route_history"]
             route_pts = []
             for point in route:
@@ -105,33 +113,33 @@ class ProcessResponseState(State):
                 route_pts.append((px, py))
 
             # Filter points to only connect successful ones and the current target
-            successful_route_pts = [
-                pt for i, pt in enumerate(route_pts)
-                if route[i].get("status", "success") != "failed"
-            ]
+            #successful_route_pts = [
+            #    pt for i, pt in enumerate(route_pts)
+            #    if route[i].get("status", "success") != "failed"
+            #]
 
             # Draw lines connecting the successful route points (magenta)
-            for i in range(1, len(successful_route_pts)):
-                cv2.line(
-                    map_image,
-                    successful_route_pts[i - 1],
-                    successful_route_pts[i],
-                    (255, 0, 255, 255),  # Magenta
-                    max(1, scale // 2),
-                    cv2.LINE_AA,
-                )
+            #for i in range(1, len(successful_route_pts)):
+            #    cv2.line(
+            #        map_image,
+            #        successful_route_pts[i - 1],
+            #        successful_route_pts[i],
+            #        (255, 0, 255, 255),  # Magenta
+            #        max(1, scale // 2),
+            #        cv2.LINE_AA,
+            #    )
 
             # Draw circles at each visited waypoint (cyan for success, red for failed)
-            for i, pt in enumerate(route_pts):
-                # Access the status of the waypoint, defaulting to success for backwards compatibility
-                status = route[i].get("status", "success")
-                if i == 0:
-                    color = (255, 255, 0, 255)  # Yellow=start
-                elif status == "failed":
-                    color = (0, 0, 255, 255)  # Red=failed
-                else:
-                    color = (0, 255, 255, 255)  # Cyan=waypoints
-                cv2.circle(map_image, pt, 2 * scale, color, -1)
+            #for i, pt in enumerate(route_pts):
+            #    # Access the status of the waypoint, defaulting to success for backwards compatibility
+            #    status = route[i].get("status", "success")
+            #    if i == 0:
+            #        color = (255, 255, 0, 255)  # Yellow=start
+            #    elif status == "failed":
+            #        color = (0, 0, 255, 255)  # Red=failed
+            #    else:
+            #        color = (0, 255, 255, 255)  # Cyan=waypoints
+            #    cv2.circle(map_image, pt, 2 * scale, color, -1)
 
             # Draw the current target waypoint (green, larger)
             current_target = route_pts[-1]

@@ -25,6 +25,7 @@ import os
 import json
 from datetime import datetime
 import shutil
+import math
 
 class LlamaState(ActionState):
 
@@ -43,7 +44,38 @@ class LlamaState(ActionState):
         yasmin.YASMIN_LOG_INFO(
             f"Creating LLaMA goal with robot position: {robot_position}"
         )
+
+        robot_x, robot_y, _ = robot_position
+        grid_mapping = blackboard["grid_mapping"]
+        distances_text = ""
+        if grid_mapping:
+            distances_list = []
+            for frontier_id, coords in grid_mapping.items():
+                f_x = coords["x"]
+                f_y = coords["y"]
+                distance = math.hypot(robot_x - f_x, robot_y - f_y)
+                distances_list.append(f"- ID {frontier_id}: {distance:.2f} meters")
+            distances_text = "Euclidean distance from the robot to each frontier:\n" + "\n".join(distances_list) + "\n"
+
         radius = blackboard["image_width_m"] // 2
+        # Determine if we should mention the blue line (second iteration onwards)
+        has_history = "route_history" in blackboard and len(blackboard["route_history"]) > 0
+        if has_history:
+            trend_line_legend = "Magenta line: rover's recent path. The THICKER and DARKER end is the most recent position.\n"
+            trend_line_instruction = "Use the magenta line to understand the rover's recent movement trend and follow the same logic if possible.\n"
+            trend_line_reasoning = " (consider movement trend)"
+            trend_prompt = "- movement_trend: analyze the magenta line to determine the rover's recent direction of travel and exploration logic.\n                    "
+            trend_global_instruction = " AND the movement_trend"
+            trend_local_instruction = " and movement_trend"
+            trend_analysis_instruction = ", movement_trend"
+        else:
+            trend_line_legend = ""
+            trend_line_instruction = ""
+            trend_line_reasoning = ""
+            trend_prompt = ""
+            trend_global_instruction = ""
+            trend_local_instruction = ""
+            trend_analysis_instruction = ""
 
         goal = GenerateChatCompletions.Goal()
         goal.messages = [
@@ -60,49 +92,57 @@ class LlamaState(ActionState):
                     "2D MAP:\n"
                     "White area: explored space\n"
                     "Gray area: unexplored space\n"
-                    "Blue line: rover's recent path (NOTE: This line won't be visible in the first iteration)\n"
-                    "Red dot: rover position\n"
-                    f"Red arrow: rover orientation (yaw: {robot_position[2]} radians)\n"
+                    f"{trend_line_legend}"
+                    "Red dot labeled 'ROBOT': rover position\n"
+                    f"Red arrow: rover orientation\n"
+                    "Red 'X': recent failed navigation targets. CRITICAL: You MUST NOT select any frontier ID that is marked with or near a red 'X'. Avoid those areas entirely.\n"
+                    "Crosshair: Helps estimate positions visually. Edges are labeled TOP, BOTTOM, LEFT, RIGHT.\n"
                     "Numbered IDs: frontier cells. Targets\n"
-                    "IMPORTANT: ID numbers do NOT indicate spatial proximity. For example, ID 1 and ID 2 may be far apart. "
-                    "Always determine the actual position and adjacency of each ID by visually inspecting the map.\n"
-                    "Analyze the map and determine the next best frontier target to ensure no area is left unexplored.\n\n"
-                    "1. **Analyze**: Look at the Red Dot and the numbered frontier IDs on the map. Identify the unexplored areas.\n"
-                    "2. **Global Strategy**: Decide a efficient strategy to explore the whole radius: Spiral, zig-zag, from center to border, etc.\n"
-                    "3. **Local Strategy**: Decide if you should explore corners or gaps that should be closed now to avoid returning later or go to high-gain major areas.\n"
-                    "4. **Execute**: Select the frontier ID that represents the best target for your chosen strategy. You MUST choose one of the numbered IDs visible on the map. Select a frontier that is close to the robot. If the blue line is visible, use it to understand the rover's recent movement trend and follow the same logic. For example, if the blue line has a trend to the right, mantain the direction to avoid sudden oscilations \n\n"
+                    "IMPORTANT: ID numbers do NOT indicate spatial proximity.\n"
+                    f"{distances_text}"
+                    "Analyze the map, the rover's trajectory, and the distances to determine the best next frontier.\n"
+                    "Select a reasonably close frontier to minimize travel, while also considering a coherent exploration pattern.\n"
+                    f"{trend_line_instruction}"
                     "OUTPUT JSON:\n"
-                    "- description_of_the_map: VERY SHORT description. Answer ONLY these questions directly: 1. Where is the robot? (center, bottom, right, etc.) 2. Where is the robot facing? (the arrow is pointing to the right, left, top, bottom, etc.) 3. How are the surroundings? (bottom partially explored, top unexplored, etc.) 4. Which frontier cells are visible? 5. What is the last trend of the robot? (going right, left, top, bottom, etc.). DO NOT explain the map shape. DO NOT explain what colors mean. DO NOT add extra text.\n"
-                    "- chosen_strategy: Explain with details the chosen global and local strategies to explore the radius of the map. Why is the chosen frontier ID the best option? If the blue line is visible, does it make sense with the last trend of the robot? \n"
-                    "- target_label: [integer] (must be one of the frontier IDs on the map)\n"
-                    "- target_yaw: [float (0 to 6.28)]\n"
-                    "- is_fully_explored: [boolean]\n"
+                    "- robot_situation: ONLY describe the robot's general position on the map and its orientation (using the crosshair labels TOP, BOTTOM, LEFT, RIGHT). Do NOT mention any IDs.\n"
+                    "- unexplored_area: based on the robot_situation, identify and list ALL the different unexplored areas (gray color). Describe their locations relative to the robot.\n"
+                    f"{trend_prompt}- global_strategy: based on the unexplored_area{trend_global_instruction}, determine ONE global exploration pattern to cover it efficiently (ej. spiral, zig-zag, etc.) and briefly justify why this pattern is chosen\n"
+                    f"- local_strategy: considering the global_strategy{trend_local_instruction}, decide if right now it is better to go to larger open spaces OR to smaller gaps to avoid having to return later, and briefly justify this decision.\n"
+                    "- strategy_analysis: combining the local_strategy, global_strategy, movement_trend, and distances, evaluate the 3 most relevant frontiers to select the best one. IMPORTANT: Verify that the considered frontiers are NOT marked with a red 'X'.\n"
+                    f"- reasoning: final justification for the chosen target, confirming how it logically derives from all the previous analysis steps {trend_line_reasoning}\n"
+                    "- target_label: [integer] ID of the selected frontier\n"
+                    "- is_fully_explored: [boolean] true if no unexplored areas or frontiers remain\n"
                 ),
             )
         ]
-
 
         # Attach image
         goal.images.append(self.cv_bridge.cv2_to_imgmsg(blackboard["map_image"]))
 
         # Sampling configuration and structured response schema
-        goal.sampling_config.temp = 0.3
-        goal.sampling_config.grammar_schema = """{
+        goal.sampling_config.temp = 0.0
+        grammar_dict = {
             "type": "object",
             "properties": {
-                "description_of_the_map": { 
-                    "type": "string"},
-                "chosen_strategy": { 
-                    "type": "string"},
-                "is_fully_explored": { 
-                    "type": "boolean"},
-                "target_label": { 
-                    "type": "integer"},
-                "target_yaw": { 
-                    "type": "number"}
+                "robot_situation": {"type": "string"},
+                "unexplored_area": {"type": "string"},
+                "movement_trend": {"type": "string"},
+                "global_strategy": {"type": "string"},
+                "local_strategy": {"type": "string"},
+                "strategy_analysis": {"type": "string"},
+                "reasoning": {"type": "string"},
+                "target_label": {"type": "integer"},
+                "is_fully_explored": {"type": "boolean"}
             },
-            "required": ["description_of_the_map", "chosen_strategy", "is_fully_explored", "target_label", "target_yaw"]
-        }"""
+            "required": ["robot_situation", "unexplored_area", "global_strategy", "local_strategy", "strategy_analysis", "reasoning", "target_label", "is_fully_explored"]
+        }
+        
+        if has_history:
+            grammar_dict["properties"]["movement_trend"] = {"type": "string"}
+            req_list = grammar_dict["required"]
+            req_list.insert(req_list.index("unexplored_area") + 1, "movement_trend")
+            
+        goal.sampling_config.grammar_schema = json.dumps(grammar_dict)
 
         return goal
 
@@ -135,8 +175,21 @@ class LlamaState(ActionState):
                 "user_prompt": llama_goal.messages[1].content,
                 "temp": llama_goal.sampling_config.temp,
             }
-            with open(os.path.join(dir_name, "prompt_config.json"), "w") as f:
-                json.dump(prompt_data, f, indent=4)
+            prompt_config_path = os.path.join(dir_name, "prompt_config.json")
+            prompts_list = []
+            if os.path.exists(prompt_config_path):
+                try:
+                    with open(prompt_config_path, "r") as f:
+                        prompts_list = json.load(f)
+                        if not isinstance(prompts_list, list):
+                            prompts_list = [prompts_list]
+                except Exception:
+                    pass
+            
+            if len(prompts_list) < 2:
+                prompts_list.append(prompt_data)
+                with open(prompt_config_path, "w") as f:
+                    json.dump(prompts_list, f, indent=4)
                 
             # Copy model configuration
             try:

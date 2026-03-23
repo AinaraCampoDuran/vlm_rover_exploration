@@ -62,7 +62,7 @@ def main():
         LlamaState(),
         transitions={
             SUCCEED: "PROCESSING_RESPONSE",
-            ABORT: SUCCEED,
+            ABORT: "GENERATING_MAP_IMAGE",
             CANCEL: SUCCEED,
         },
     )
@@ -73,6 +73,7 @@ def main():
         transitions={
             HAS_NEXT: "DRIVING_TO_WAYPOINT",
             HAS_NO_NEXT: SUCCEED,
+            ABORT: "GENERATING_MAP_IMAGE", # If the label is not found
         },
     )
 
@@ -81,7 +82,7 @@ def main():
         DriveState(),
         transitions={
             SUCCEED: "GENERATING_MAP_IMAGE",
-            ABORT: "GENERATING_NEXT_WP", # Cambiar esto
+            ABORT: "GENERATING_MAP_IMAGE", # If the drive fails
             CANCEL: SUCCEED,
         },
     )
