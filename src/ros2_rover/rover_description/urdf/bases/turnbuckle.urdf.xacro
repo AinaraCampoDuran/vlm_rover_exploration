@@ -1,0 +1,62 @@
+<?xml version="1.0" ?>
+
+<!-- # MIT License
+
+# Copyright (c) 2023  Miguel Ángel González Santamarta
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE. -->
+
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+    <xacro:include filename="$(find rover_description)/urdf/inertials.xacro"/>
+
+    <xacro:macro name="turnbuckle" params="lat_label reflect">
+        <link name="${lat_label}_turnbuckle_link">
+            <origin xyz="0.035 ${reflect * 0.17} 0.07" rpy="0 0 0"/>
+            <visual>
+                <origin rpy="0 0 0" xyz="0 0 0" />
+                <geometry>
+                    <mesh filename="package://rover_description/meshes/bases/turnbuckle.stl" />
+                </geometry>
+                <material name="blue" />
+            </visual>
+            <collision>
+                <origin xyz="0 0 0" rpy="0 ${math_pi_over_2} 0"/>
+                <geometry>
+                    <cylinder length="0.07" radius="0.0025"/>
+                </geometry>
+            </collision>
+            <xacro:solid_cylinder_inertial rpy="0 0 0" xyz="0 0 0" mass="0.25" radius="0.0025" length="0.07" />
+        </link>
+
+        <joint name="back_${lat_label}_turnbuckle_joint" type="revolute">
+            <origin xyz="-0.035 0 0" rpy="0 0 0"/>
+            <limit lower="${-math_pi}" upper="${math_pi}" effort="100.0" velocity="30.0" />
+            <parent link="diff_brace_link" />
+            <child link="${lat_label}_turnbuckle_link" />
+        </joint>
+
+        <!-- <joint name="front_${lat_label}_turnbuckle_joint" type="revolute">
+                <origin xyz="0.035 0 0" rpy="0 0 0"/>
+                <limit lower="${-math_pi}" upper="${math_pi}" effort="100.0" velocity="30.0" />
+                <parent link="${lat_label}_rocker_link" />
+                <child link="${lat_label}_turnbuckle_link" />
+            </joint> -->
+    </xacro:macro>
+</robot>
