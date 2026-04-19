@@ -56,8 +56,16 @@ class GenerateMapImageState(MonitorState):
             self.monitor_handler,
             qos=map_qos,
             msg_queue=1,
-            timeout=10,
+            timeout=60, # Aumentado de 10 a 60 para evitar timeouts al arrancar Gazebo/RTAB-Map
         )
+
+    def execute(self, blackboard: Blackboard) -> str:
+        # Evita que la imagen de Llava y el grid map se desincronicen
+        blackboard["is_map_monitor_active"] = True
+        try:
+            return super().execute(blackboard)
+        finally:
+            blackboard["is_map_monitor_active"] = False
 
     def get_robot_transform(self) -> TransformException | None:
         try:
@@ -70,6 +78,9 @@ class GenerateMapImageState(MonitorState):
             return None
 
     def monitor_handler(self, blackboard: Blackboard, msg: OccupancyGrid) -> str:
+        if "is_map_monitor_active" not in blackboard or not blackboard["is_map_monitor_active"]:
+            return ""
+
         transform = self.get_robot_transform()
         while transform is None:
             yasmin.YASMIN_LOG_WARN("Waiting for robot transform...")
@@ -337,30 +348,32 @@ class GenerateMapImageState(MonitorState):
                 if c == grid_cols - 1: x2 = img_w
                 if r == grid_rows - 1: y2 = img_h
 
-                # Center in pixels
-                cx = (x1 + x2) // 2
-                cy = (y1 + y2) // 2
-
-                # Check if inside circle
-                dist_sq = (cx - center_x)**2 + (cy - center_y)**2
-                if dist_sq > exploration_radius_px**2:
-                    continue
-
-                # --- Frontier check ---
                 # Extract the cell region from the masked grayscale scaled image
                 cell_region = masked_scaled_img[y1:y2, x1:x2]
-                total_pixels = cell_region.size
+                
+                # --- Frontier check ---
                 num_unknown = np.count_nonzero(cell_region == unknown_color)
-                num_free = np.count_nonzero(cell_region == free_color)
+                free_y, free_x = np.where(cell_region == free_color)
+                num_free = len(free_x)
 
                 has_unknown = num_unknown > 0
                 has_free = num_free > 0
 
-                # Require both unknown AND free pixels, with at least 10% free (gray)
+                # Require both unknown AND free pixels, with at least 8% unknown
+                total_pixels = cell_region.size
                 min_free_ratio = 0.08
                 if not (has_unknown and has_free):
                     continue
                 if (num_unknown / total_pixels) < min_free_ratio:
+                    continue
+
+                # Use the geometric center of the grid cell
+                cx = x1 + cell_w // 2
+                cy = y1 + cell_h // 2
+
+                # Check if inside circle
+                dist_sq = (cx - center_x)**2 + (cy - center_y)**2
+                if dist_sq > exploration_radius_px**2:
                     continue
 
                 label = str(label_counter)

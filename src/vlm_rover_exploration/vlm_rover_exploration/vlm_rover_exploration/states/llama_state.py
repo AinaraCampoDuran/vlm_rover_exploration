@@ -63,19 +63,15 @@ class LlamaState(ActionState):
         if has_history:
             trend_line_legend = "Magenta line: rover's recent path. The THICKER and DARKER end is the most recent position.\n"
             trend_line_instruction = "Use the magenta line to understand the rover's recent movement trend and follow the same logic if possible.\n"
-            trend_line_reasoning = " (consider movement trend)"
             trend_prompt = "- movement_trend: analyze the magenta line to determine the rover's recent direction of travel and exploration logic.\n                    "
-            trend_global_instruction = " AND the movement_trend"
+            trend_global_instruction = " and the movement_trend"
             trend_local_instruction = " and movement_trend"
-            trend_analysis_instruction = ", movement_trend"
         else:
             trend_line_legend = ""
             trend_line_instruction = ""
-            trend_line_reasoning = ""
             trend_prompt = ""
             trend_global_instruction = ""
             trend_local_instruction = ""
-            trend_analysis_instruction = ""
 
         goal = GenerateChatCompletions.Goal()
         goal.messages = [
@@ -108,8 +104,8 @@ class LlamaState(ActionState):
                     "- unexplored_area: based on the robot_situation, identify and list ALL the different unexplored areas (gray color). Describe their locations relative to the robot.\n"
                     f"{trend_prompt}- global_strategy: based on the unexplored_area{trend_global_instruction}, determine ONE global exploration pattern to cover it efficiently (ej. spiral, zig-zag, etc.) and briefly justify why this pattern is chosen\n"
                     f"- local_strategy: considering the global_strategy{trend_local_instruction}, decide if right now it is better to go to larger open spaces OR to smaller gaps to avoid having to return later, and briefly justify this decision.\n"
-                    "- strategy_analysis: combining the local_strategy, global_strategy, movement_trend, and distances, evaluate the 3 most relevant frontiers to select the best one. IMPORTANT: Verify that the considered frontiers are NOT marked with a red 'X'.\n"
-                    f"- reasoning: final justification for the chosen target, confirming how it logically derives from all the previous analysis steps {trend_line_reasoning}\n"
+                    "- strategy_analysis: combining the local_strategy, global_strategy, and distances, evaluate the 3 most relevant frontiers to select the best one. IMPORTANT: Verify that the considered frontiers are NOT marked with a red 'X'.\n"
+                    f"- reasoning: final justification for the chosen target, confirming how it logically derives from all the previous analysis steps\n"
                     "- target_label: [integer] ID of the selected frontier\n"
                     "- is_fully_explored: [boolean] true if no unexplored areas or frontiers remain\n"
                 ),
@@ -121,27 +117,36 @@ class LlamaState(ActionState):
 
         # Sampling configuration and structured response schema
         goal.sampling_config.temp = 0.0
+        properties = {
+            "robot_situation": {"type": "string"},
+            "unexplored_area": {"type": "string"},
+        }
+        required = ["robot_situation", "unexplored_area"]
+
+        if has_history:
+            properties["movement_trend"] = {"type": "string"}
+            required.append("movement_trend")
+
+        properties.update({
+            "global_strategy": {"type": "string"},
+            "local_strategy": {"type": "string"},
+            "strategy_analysis": {"type": "string"},
+            "reasoning": {"type": "string"},
+            "target_label": {"type": "integer"},
+            "is_fully_explored": {"type": "boolean"}
+        })
+
+        required.extend([
+            "global_strategy", "local_strategy", "strategy_analysis", 
+            "reasoning", "target_label", "is_fully_explored"
+        ])
+
         grammar_dict = {
             "type": "object",
-            "properties": {
-                "robot_situation": {"type": "string"},
-                "unexplored_area": {"type": "string"},
-                "movement_trend": {"type": "string"},
-                "global_strategy": {"type": "string"},
-                "local_strategy": {"type": "string"},
-                "strategy_analysis": {"type": "string"},
-                "reasoning": {"type": "string"},
-                "target_label": {"type": "integer"},
-                "is_fully_explored": {"type": "boolean"}
-            },
-            "required": ["robot_situation", "unexplored_area", "global_strategy", "local_strategy", "strategy_analysis", "reasoning", "target_label", "is_fully_explored"]
+            "properties": properties,
+            "required": required
         }
-        
-        if has_history:
-            grammar_dict["properties"]["movement_trend"] = {"type": "string"}
-            req_list = grammar_dict["required"]
-            req_list.insert(req_list.index("unexplored_area") + 1, "movement_trend")
-            
+
         goal.sampling_config.grammar_schema = json.dumps(grammar_dict)
 
         return goal

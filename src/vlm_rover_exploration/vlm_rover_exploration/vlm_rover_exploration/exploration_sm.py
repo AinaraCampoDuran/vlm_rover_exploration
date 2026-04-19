@@ -24,7 +24,6 @@ from yasmin_ros import set_ros_loggers
 from yasmin_ros.basic_outcomes import SUCCEED, TIMEOUT, CANCEL, ABORT
 
 from vlm_rover_exploration.states.generate_map_image_state import GenerateMapImageState
-from vlm_rover_exploration.states.traditional_frontier_state import TraditionalFrontierState
 from vlm_rover_exploration.states.drive_state import DriveState
 from vlm_rover_exploration.states.llama_state import LlamaState
 from vlm_rover_exploration.states.process_response_state import (

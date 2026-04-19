@@ -19,8 +19,8 @@
       system_prompt_type: ChatML
 
     model:
-      repo: "Qwen/Qwen3-VL-2B-Instruct-GGUF"
-      filename: "Qwen3VL-2B-Instruct-Q4_K_M.gguf"
+      repo: "unsloth/Qwen3.5-4B-GGUF"
+      filename: "Qwen3.5-4B-Q4_K_M.gguf"
     mmproj:
-      repo: "Qwen/Qwen3-VL-2B-Instruct-GGUF"
-      filename: "mmproj-Qwen3VL-2B-Instruct-F16.gguf"
+      repo: "unsloth/Qwen3.5-4B-GGUF"
+      filename: "mmproj-F16.gguf"

@@ -6,7 +6,4 @@ log
 src/llama_ros
 src/yasmin
 map_image.png
-src/ros2_rover/*
-!src/ros2_rover/rover_navigation/
-!src/ros2_rover/rover_navigation/**
 notas
