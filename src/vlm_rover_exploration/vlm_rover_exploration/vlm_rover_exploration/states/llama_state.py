@@ -63,7 +63,7 @@ class LlamaState(ActionState):
         if has_history:
             trend_line_legend = "Magenta line: rover's recent path. The THICKER and DARKER end is the most recent position.\n"
             trend_line_instruction = "Use the magenta line to understand the rover's recent movement trend and follow the same logic if possible.\n"
-            trend_prompt = "- movement_trend: analyze the magenta line to determine the rover's recent direction of travel and exploration logic.\n                    "
+            trend_prompt = "- movement_trend [1 sentence]: analyze the magenta line to determine the rover's recent direction of travel and exploration logic.\n                    "
             trend_global_instruction = " and the movement_trend"
             trend_local_instruction = " and movement_trend"
         else:
@@ -86,29 +86,27 @@ class LlamaState(ActionState):
                 content=(
                     f"<__media__>\n"
                     "2D MAP:\n"
-                    "White area: explored space\n"
-                    "Gray area: unexplored space\n"
-                    f"{trend_line_legend}"
                     "Red dot labeled 'ROBOT': rover position\n"
                     f"Red arrow: rover orientation\n"
-                    "Red 'X': recent failed navigation targets. CRITICAL: You MUST NOT select any frontier ID that is marked with or near a red 'X'. Avoid those areas entirely.\n"
-                    "Crosshair: Helps estimate positions visually. Edges are labeled TOP, BOTTOM, LEFT, RIGHT.\n"
-                    "Numbered IDs: frontier cells. Targets\n"
-                    "IMPORTANT: ID numbers do NOT indicate spatial proximity.\n"
-                    f"{distances_text}"
-                    "Analyze the map, the rover's trajectory, and the distances to determine the best next frontier.\n"
-                    "Select a reasonably close frontier to minimize travel, while also considering a coherent exploration pattern.\n"
+                    "White area: explored space\n"
+                    "Gray area: unexplored space\n"
+                    "Yellow area: obstacles. CRITICAL: ONLY yellow pixels represent obstacles. Gray area is simply unexplored space. You can ALWAYS navigate through white space to reach any frontier ID. Do NOT assume a frontier is unreachable or 'surrounded by obstacles' unless you see a clear YELLOW barrier blocking the path. Jagged gray edges are NOT obstacles.\n"
+                    f"{trend_line_legend}"
+                   #"Red 'X': recent failed navigation targets. CRITICAL: You MUST NOT select any frontier ID that is marked with or near a red 'X'. Avoid those areas entirely.\n"
+                    "Numbered IDs: frontier cells. Valid exploration targets. CRITICAL: If an ID is visible, it MUST be considered a valid and necessary target. Even if an ID label appears to overlap with a white (explored) area, the underlying target point is ALWAYS on unexplored gray pixels. You MUST NOT discard an ID because you think it is already explored; if the label exists, it is a valid target.\n"
+                    #f"{distances_text}"
+                    f"Available frontiers IDs: {list(grid_mapping.keys())}\n"
+                    "Analyze the map, the rover's trajectory, the obstacles if visible, and the distances to determine the best next frontier.\n"
                     f"{trend_line_instruction}"
                     "OUTPUT JSON:\n"
-                    "- robot_situation: ONLY describe the robot's general position on the map and its orientation (using the crosshair labels TOP, BOTTOM, LEFT, RIGHT). Do NOT mention any IDs.\n"
-                    "- unexplored_area: based on the robot_situation, identify and list ALL the different unexplored areas (gray color). Describe their locations relative to the robot.\n"
-                    f"{trend_prompt}- global_strategy: based on the unexplored_area{trend_global_instruction}, determine ONE global exploration pattern to cover it efficiently (ej. spiral, zig-zag, etc.) and briefly justify why this pattern is chosen\n"
-                    f"- local_strategy: considering the global_strategy{trend_local_instruction}, decide if right now it is better to go to larger open spaces OR to smaller gaps to avoid having to return later, and briefly justify this decision.\n"
-                    "- strategy_analysis: combining the local_strategy, global_strategy, and distances, evaluate the 3 most relevant frontiers to select the best one. IMPORTANT: Verify that the considered frontiers are NOT marked with a red 'X'.\n"
-                    f"- reasoning: final justification for the chosen target, confirming how it logically derives from all the previous analysis steps\n"
+                    "- robot_localization [1 sentence]: ONLY describe the robot's position on the map and its orientation (using the crosshair labels TOP, BOTTOM, LEFT, RIGHT). Do NOT mention any IDs.\n" 
+                    "- unexplored_area [1 sentence]: based on the robot_localization, identify and list ALL the different unexplored areas (gray color). Describe their locations relative to the robot. Do not mention any ID.\n"
+                    f"{trend_prompt}- global_strategy [1-2 sentences]: based on the unexplored_area{trend_global_instruction}, determine ONE global exploration pattern to cover it efficiently (ej. spiral, zig-zag, etc.) and briefly justify why this pattern is chosen\n"
+                    f"- local_strategy [1 sentence]: following the global strategy, decide if it is better to go to larger open spaces (vast unexplored fields for high range gain) or smaller gaps (isolated gray areas). If a small gap is close to the robot, prioritize clearing it to avoid backtracking. Briefly justify your choice.\n"
+                    "- strategy_analysis [3-4 sentences]: combining the local_strategy, global_strategy, and distances, evaluate the 4 most relevant close frontiers to select the best one. Briefly justify the selected frontier and why you are discarding the others.\n"
                     "- target_label: [integer] ID of the selected frontier\n"
-                    "- is_fully_explored: [boolean] true if no unexplored areas or frontiers remain\n"
-                ),
+                    "- mission_complete: [boolean] Set to true ONLY if you believe all remaining frontiers are unreachable. Otherwise, set to false.\n"
+            ),
             )
         ]
 
@@ -117,6 +115,7 @@ class LlamaState(ActionState):
 
         # Sampling configuration and structured response schema
         goal.sampling_config.temp = 0.0
+        goal.sampling_config.n_probs = 1
         properties = {
             "robot_situation": {"type": "string"},
             "unexplored_area": {"type": "string"},
@@ -131,14 +130,13 @@ class LlamaState(ActionState):
             "global_strategy": {"type": "string"},
             "local_strategy": {"type": "string"},
             "strategy_analysis": {"type": "string"},
-            "reasoning": {"type": "string"},
             "target_label": {"type": "integer"},
-            "is_fully_explored": {"type": "boolean"}
+            "mission_complete": {"type": "boolean"}
         })
 
         required.extend([
             "global_strategy", "local_strategy", "strategy_analysis", 
-            "reasoning", "target_label", "is_fully_explored"
+            "target_label", "mission_complete"
         ])
 
         grammar_dict = {
@@ -158,6 +156,55 @@ class LlamaState(ActionState):
             response = result.choices[0].message.content
             blackboard["llama_response"] = response
             yasmin.YASMIN_LOG_INFO(f"LLaMA response:\n{response}")
+            
+            # Calculate Perplexity exclusively for strategy_analysis field
+            logprobs_list = result.choices[0].logprobs
+            if logprobs_list and len(logprobs_list) > 0:
+                log_sum = 0.0
+                num_tokens = 0
+                in_strategy_analysis = False
+                reconstructed_text = ""
+                for token_prob_array in logprobs_list:
+                    if hasattr(token_prob_array, 'data') and len(token_prob_array.data) > 0:
+                        t_text = token_prob_array.data[0].token_text
+                        
+                        # Check for start key in reconstructed text
+                        if not in_strategy_analysis:
+                            if "strategy_analysis" in (reconstructed_text + t_text):
+                                in_strategy_analysis = True
+                        
+                        # Check for end key in reconstructed text
+                        if in_strategy_analysis:
+                            if "target_label" in (reconstructed_text + t_text):
+                                in_strategy_analysis = False
+                                break
+                            
+                            cleaned_text = t_text.strip(' {}[]":,\n\r\t')
+                            if cleaned_text:
+                                p = token_prob_array.data[0].probability
+                                
+                                # The model provides log-probabilities (0.0 is max certainty, negative is lower)
+                                # We sum them directly as log_probs.
+                                if p <= 0:
+                                    log_sum += p
+                                else:
+                                    # Fallback if somehow we get a raw probability > 0
+                                    log_sum += math.log(max(p, 1e-10))
+                                num_tokens += 1
+                        
+                        reconstructed_text += t_text
+                
+                if num_tokens > 0:
+                    perplexity = math.exp(-log_sum / num_tokens)
+                else:
+                    perplexity = 1.0  # Default to 1.0 (perfectly certain) if no tokens found
+                    yasmin.YASMIN_LOG_WARN(f"Perplexity calculation found 0 tokens in strategy_analysis. Defaulting to 1.0. Reconstructed text length: {len(reconstructed_text)}")
+            else:
+                perplexity = 0.0
+                yasmin.YASMIN_LOG_WARN("No logprobs received, perplexity = 0")
+                
+            blackboard["perplexities"].append(perplexity)
+            yasmin.YASMIN_LOG_INFO(f"Response Perplexity: {perplexity:.4f}")
             
             # Save the JSON generated by the model in a single file            
             try:

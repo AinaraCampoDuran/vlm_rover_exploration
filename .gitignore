@@ -7,3 +7,5 @@ src/llama_ros
 src/yasmin
 map_image.png
 notas
+llm_judge.py
+cleanup_ros.sh

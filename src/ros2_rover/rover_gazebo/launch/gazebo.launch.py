@@ -120,6 +120,7 @@ def generate_launch_description():
             "/camera/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked",
             "/imu@sensor_msgs/msg/Imu[gz.msgs.IMU",
             "/cmd_vel@geometry_msgs/msg/Twist[gz.msgs.Twist",
+            "/model/rover/odometry@nav_msgs/msg/Odometry[gz.msgs.Odometry",
         ],
         parameters=[
             os.path.join(
@@ -131,6 +132,7 @@ def generate_launch_description():
             ("/camera/depth_image", "/camera/depth/image_raw"),
             ("/camera/camera_info", "/camera/camera_info"),
             ("/camera/points", "/camera/points"),
+            ("/model/rover/odometry", "/odom_ground_truth_absolute"),
         ],
         output="screen",
     )
@@ -191,6 +193,13 @@ def generate_launch_description():
         }.items(),
     )
 
+    ground_truth_remapper_cmd = Node(
+        package="rover_gazebo",
+        executable="ground_truth_remapper_node",
+        output="screen",
+        parameters=[{"use_sim_time": True}],
+    )
+
     ld = LaunchDescription()
 
     ld.add_action(launch_rviz_cmd)
@@ -208,6 +217,7 @@ def generate_launch_description():
     ld.add_action(localization_cmd)
     ld.add_action(navigation_cmd)
     ld.add_action(cmd_vel_cmd)
+    ld.add_action(ground_truth_remapper_cmd)
     ld.add_action(rviz_cmd)
 
     return ld

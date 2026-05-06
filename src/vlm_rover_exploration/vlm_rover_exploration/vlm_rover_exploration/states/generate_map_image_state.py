@@ -92,7 +92,7 @@ class GenerateMapImageState(MonitorState):
         scale = blackboard["scale_factor"]
 
         # Add margin in meters
-        margin_m = 1  # You can set to 2 or 3 as needed
+        margin_m = 2  # You can set to 2 or 3 as needed
         alpha = 0.6  # Set your desired alpha value
 
         # Increase image size by margin
@@ -133,6 +133,10 @@ class GenerateMapImageState(MonitorState):
         map_origin = msg.info.origin
 
         data = np.array(msg.data, dtype=np.int8).reshape((map_height, map_width))
+        
+        # Calculate explored area in m2 (cells that are not unknown)
+        explored_cells = np.count_nonzero(data != -1)
+        blackboard["explored_area_m2"] = float(explored_cells * (resolution * resolution))
 
         width_px = int(total_width_m / resolution)
         height_px = int(total_height_m / resolution)
@@ -156,11 +160,11 @@ class GenerateMapImageState(MonitorState):
         img = np.zeros((cropped_height, cropped_width), dtype=np.uint8)
         free_color = 255
         unknown_color = 100
-        occupied_color = 0
+        occupied_color = 50
 
-        img[cropped == -1] = unknown_color # Unknown -> White
-        img[cropped == 0] = free_color # Free -> Gray
-        img[cropped == 100] = occupied_color
+        img[cropped == -1] = unknown_color # Unknown -> Grayish
+        img[cropped == 0] = free_color # Free -> White
+        img[cropped == 100] = occupied_color # Obstacles -> Yellow
 
         img = cv2.flip(img, 0)
         scaled_img = cv2.resize(
@@ -169,6 +173,9 @@ class GenerateMapImageState(MonitorState):
             interpolation=cv2.INTER_NEAREST,
         )
         color_img = cv2.cvtColor(scaled_img, cv2.COLOR_GRAY2RGBA)
+        
+        # Color obstacles (value 50) as Bright Yellow in BGR (0, 255, 255)
+        color_img[scaled_img == 50] = [0, 255, 255, 255]
 
         # Draw grid with labels at each full meter
         pixels_per_meter = (1.0 / resolution) * scale
@@ -205,23 +212,29 @@ class GenerateMapImageState(MonitorState):
                 pts.append((rel_x, rel_y))
             
             n_pts = len(pts)
+            max_thick = max(1, 4 * scale)
+            min_thick = max(1, 1 * scale)
+
             for i in range(1, n_pts):
-                # fraction from 0 (oldest) to 1 (newest)
-                frac = i / (n_pts - 1)
-                
-                # soften the fade so it's not too extreme
-                # interpolate color to MAGENTA so it contrasts with Blue IDs
-                b = 255
-                g = int(150 * (1 - frac))
-                r = 255
-                color = (b, g, r, 255)
-                
-                # interpolate thickness to be less thick overall
-                max_thick = max(1, 2 * scale)
-                min_thick = max(1, 1 * scale)
-                thick = int(min_thick + (max_thick - min_thick) * frac)
-                
-                cv2.line(color_img, pts[i - 1], pts[i], color, thick, cv2.LINE_AA)
+                # if there is only one segment (first iteration), divide it to see direction
+                if n_pts == 2:
+                    p1 = np.array(pts[i-1])
+                    p2 = np.array(pts[i])
+                    num_sub = 20 
+                    for j in range(num_sub):
+                        f = (j + 1) / num_sub
+                        sub_p1 = p1 + (p2 - p1) * (j / num_sub)
+                        sub_p2 = p1 + (p2 - p1) * (f)
+                        color = (255, int(150 * (1 - f)), 255, 255)
+                        thick = int(min_thick + (max_thick - min_thick) * f)
+                        cv2.line(color_img, tuple(sub_p1.astype(int)), 
+                                 tuple(sub_p2.astype(int)), color, thick, cv2.LINE_AA)
+                else:
+                    # Comportamiento normal: un grosor constante por cada tramo
+                    frac = i / (n_pts - 1)
+                    color = (255, int(150 * (1 - frac)), 255, 255)
+                    thick = int(min_thick + (max_thick - min_thick) * frac)
+                    cv2.line(color_img, pts[i - 1], pts[i], color, thick, cv2.LINE_AA)
 
         # Draw heading
         arrow_len = 10 * scale
@@ -237,24 +250,24 @@ class GenerateMapImageState(MonitorState):
         )
 
         # Draw failed navigation attempts as Red 'X' marks (short-term memory: last 5 attempts)
-        if "route_history" in blackboard and len(blackboard["route_history"]) > 0:
-            recent_history = blackboard["route_history"][-5:]
-            failed_routes = [r for r in recent_history if r.get("status") == "failed"]
-            for f_route in failed_routes:
-                f_x = f_route["x"]
-                f_y = f_route["y"]
-                f_rel_x = int(((f_x - init_x) / resolution) * scale) + (cropped_width * scale // 2)
-                f_rel_y = int((-(f_y - init_y) / resolution) * scale) + (cropped_height * scale // 2)
-                
-                thick = max(2, int(1.5 * scale))
-                length = 5 * scale
-                cross_color = (0, 0, 255, 255) # Red BGRA
-                cv2.line(color_img, (f_rel_x - length, f_rel_y - length), (f_rel_x + length, f_rel_y + length), cross_color, thick)
-                cv2.line(color_img, (f_rel_x - length, f_rel_y + length), (f_rel_x + length, f_rel_y - length), cross_color, thick)
+        #f "route_history" in blackboard and len(blackboard["route_history"]) > 0:
+        #   recent_history = blackboard["route_history"][-5:]
+        #   failed_routes = [r for r in recent_history if r.get("status") == "failed"]
+        #   for f_route in failed_routes:
+        #       f_x = f_route["x"]
+        #       f_y = f_route["y"]
+        #       f_rel_x = int(((f_x - init_x) / resolution) * scale) + (cropped_width * scale // 2)
+        #       f_rel_y = int((-(f_y - init_y) / resolution) * scale) + (cropped_height * scale // 2)
+        #       
+        #       thick = max(2, int(1.5 * scale))
+        #       length = 5 * scale
+        #       cross_color = (0, 0, 255, 255) # Red BGRA
+        #       cv2.line(color_img, (f_rel_x - length, f_rel_y - length), (f_rel_x + length, f_rel_y + length), cross_color, thick)
+        #       cv2.line(color_img, (f_rel_x - length, f_rel_y + length), (f_rel_x + length, f_rel_y - length), cross_color, thick)
 
         # Draw Grid Overlay
         # Define fixed cell size in meters
-        cell_size_meters = 2.0  # Reduced for higher precision
+        cell_size_meters = 2.0  # Increased to space out labels
         blackboard["cell_size_meters"] = cell_size_meters
 
         pixels_per_cell = int(cell_size_meters / resolution) * scale
@@ -281,48 +294,58 @@ class GenerateMapImageState(MonitorState):
         cv2.addWeighted(cross_overlay, 0.4, color_img, 0.6, 0, color_img)
 
         font = cv2.FONT_HERSHEY_SIMPLEX
-        text_scale = 1.8
-        text_thickness = 3
+        text_scale = 0.2 * scale
+        text_thickness = max(1, int(0.3 * scale))
         
         # dynamic margin
         margin_x = max(10, int(color_img_w * 0.05))
         margin_y = max(10, int(color_img_h * 0.05))
         
+        # Offset from circle
+        text_offset = 10 * scale // 4
+        
         # TOP
         top_text = "TOP"
         tw, th = cv2.getTextSize(top_text, font, text_scale, text_thickness)[0]
-        cv2.putText(color_img, top_text, (center_x - tw//2, th + margin_y), font, text_scale, (0, 0, 0, 255), text_thickness + 2)
-        cv2.putText(color_img, top_text, (center_x - tw//2, th + margin_y), font, text_scale, (0, 255, 0, 255), text_thickness)
+        tx, ty = center_x - tw//2, center_y - exploration_radius_px - text_offset
+        cv2.putText(color_img, top_text, (tx, ty), font, text_scale, (0, 0, 0, 255), text_thickness + 1)
+        cv2.putText(color_img, top_text, (tx, ty), font, text_scale, (0, 255, 0, 255), text_thickness)
         
         # BOTTOM
         bot_text = "BOTTOM"
         tw, th = cv2.getTextSize(bot_text, font, text_scale, text_thickness)[0]
-        cv2.putText(color_img, bot_text, (center_x - tw//2, color_img_h - margin_y), font, text_scale, (0, 0, 0, 255), text_thickness + 2)
-        cv2.putText(color_img, bot_text, (center_x - tw//2, color_img_h - margin_y), font, text_scale, (0, 255, 0, 255), text_thickness)
+        tx, ty = center_x - tw//2, center_y + exploration_radius_px + text_offset + th
+        cv2.putText(color_img, bot_text, (tx, ty), font, text_scale, (0, 0, 0, 255), text_thickness + 1)
+        cv2.putText(color_img, bot_text, (tx, ty), font, text_scale, (0, 255, 0, 255), text_thickness)
 
         # LEFT
         left_text = "LEFT"
         tw, th = cv2.getTextSize(left_text, font, text_scale, text_thickness)[0]
-        cv2.putText(color_img, left_text, (margin_x, center_y + th//2), font, text_scale, (0, 0, 0, 255), text_thickness + 2)
-        cv2.putText(color_img, left_text, (margin_x, center_y + th//2), font, text_scale, (0, 255, 0, 255), text_thickness)
+        tx, ty = center_x - exploration_radius_px - text_offset - tw, center_y + th//2
+        cv2.putText(color_img, left_text, (tx, ty), font, text_scale, (0, 0, 0, 255), text_thickness + 1)
+        cv2.putText(color_img, left_text, (tx, ty), font, text_scale, (0, 255, 0, 255), text_thickness)
 
         # RIGHT
         right_text = "RIGHT"
         tw, th = cv2.getTextSize(right_text, font, text_scale, text_thickness)[0]
-        cv2.putText(color_img, right_text, (color_img_w - tw - margin_x, center_y + th//2), font, text_scale, (0, 0, 0, 255), text_thickness + 2)
-        cv2.putText(color_img, right_text, (color_img_w - tw - margin_x, center_y + th//2), font, text_scale, (0, 255, 0, 255), text_thickness)
+        tx, ty = center_x + exploration_radius_px + text_offset, center_y + th//2
+        cv2.putText(color_img, right_text, (tx, ty), font, text_scale, (0, 0, 0, 255), text_thickness + 1)
+        cv2.putText(color_img, right_text, (tx, ty), font, text_scale, (0, 255, 0, 255), text_thickness)
 
-        cv2.circle(color_img, (robot_rel_x, robot_rel_y), 4 * scale, (0, 0, 255, 255), -1)
+        # Draw the robot as a red dot proportional to its real size (approx. 0.5m diameter)
+        robot_radius_m = 0.25 
+        robot_radius_px = int(robot_radius_m * pixels_per_meter)
+        cv2.circle(color_img, (robot_rel_x, robot_rel_y), robot_radius_px, (0, 0, 255, 255), -1)
 
         # Draw explicit ROBOT text label
         robot_label = "ROBOT"
-        r_scale = 1.0
-        r_thick = 2
+        r_scale = 0.1 * scale
+        r_thick = max(1, int(0.2 * scale))
         tw, th = cv2.getTextSize(robot_label, font, r_scale, r_thick)[0]
         rx = robot_rel_x - (tw // 2)
         ry = robot_rel_y - (6 * scale) # Positioned above the 4*scale radius red dot
         # Text Outline (Black)
-        cv2.putText(color_img, robot_label, (rx, ry), font, r_scale, (0, 0, 0, 255), r_thick + 3)
+        cv2.putText(color_img, robot_label, (rx, ry), font, r_scale, (0, 0, 0, 255), r_thick + 1)
         # Text Fill (Red)
         cv2.putText(color_img, robot_label, (rx, ry), font, r_scale, (0, 0, 255, 255), r_thick)
 
@@ -334,12 +357,14 @@ class GenerateMapImageState(MonitorState):
         cv2.circle(circle_mask, (center_x, center_y), exploration_radius_px, 255, -1)
         
         masked_scaled_img = scaled_img.copy()
-        masked_scaled_img[circle_mask == 0] = 50  # Dummy value (neither unknown=100 nor free=255)
+        masked_scaled_img[circle_mask == 0] = 150  # Dummy value
+
+        candidate_frontiers = []
 
         for r in range(grid_rows):
             for c in range(grid_cols):
                 
-                # Pixel bounds (re-calculated or cached, simple enough to recalc)
+                # Pixel bounds
                 x1 = c * cell_w
                 y1 = r * cell_h
                 x2 = x1 + cell_w
@@ -348,70 +373,125 @@ class GenerateMapImageState(MonitorState):
                 if c == grid_cols - 1: x2 = img_w
                 if r == grid_rows - 1: y2 = img_h
 
-                # Extract the cell region from the masked grayscale scaled image
+                # Extract the cell region
                 cell_region = masked_scaled_img[y1:y2, x1:x2]
                 
                 # --- Frontier check ---
                 num_unknown = np.count_nonzero(cell_region == unknown_color)
-                free_y, free_x = np.where(cell_region == free_color)
-                num_free = len(free_x)
-
-                has_unknown = num_unknown > 0
-                has_free = num_free > 0
+                num_occupied = np.count_nonzero(cell_region == occupied_color)
+                num_free = np.count_nonzero(cell_region == free_color)
 
                 # Require both unknown AND free pixels, with at least 8% unknown
+                # Also, MUST NOT have occupied pixels (obstacles)
                 total_pixels = cell_region.size
                 min_free_ratio = 0.08
-                if not (has_unknown and has_free):
+                if not (num_unknown > 0 and num_free > 0) or num_occupied > 0:
                     continue
                 if (num_unknown / total_pixels) < min_free_ratio:
                     continue
 
-                # Use the geometric center of the grid cell
-                cx = x1 + cell_w // 2
-                cy = y1 + cell_h // 2
+                # Find unknown (gray) pixels and free (white) pixels
+                gray_y, gray_x = np.where(cell_region == unknown_color)
+                free_y, free_x = np.where(cell_region == free_color)
+                
+                if len(gray_x) > 0 and len(free_x) > 0:
+                    # 1. Find the "frontier boundary" (gray pixels adjacent to white)
+                    kernel = np.ones((3,3), np.uint8)
+                    free_mask = (cell_region == free_color).astype(np.uint8)
+                    dilated_free = cv2.dilate(free_mask, kernel)
+                    frontier_mask = (cell_region == unknown_color) & (dilated_free > 0)
+                    front_y, front_x = np.where(frontier_mask)
+                    
+                    if len(front_x) > 0:
+                        # Centroid of the frontier boundary
+                        c_front = np.array([np.mean(front_x), np.mean(front_y)])
+                        # Centroid of the white (explored) area within the cell
+                        c_free = np.array([np.mean(free_x), np.mean(free_y)])
+                        
+                        # Direction vector from explored space towards the frontier
+                        direction = c_front - c_free
+                        norm = np.linalg.norm(direction)
+                        if norm > 1e-3:
+                            direction /= norm
+                        else:
+                            direction = np.array([0, 0])
+                        
+                        # Move the label slightly away from the boundary into the gray zone
+                        offset_px = 5.0 * scale
+                        cx = np.clip(x1 + int(c_front[0] + direction[0] * offset_px), 0, img_w - 1)
+                        cy = np.clip(y1 + int(c_front[1] + direction[1] * offset_px), 0, img_h - 1)
+                        
+                        # Safety check: ensure the pushed point is still in the gray (unexplored) zone
+                        # If not (e.g. for small islands), reduce offset until it is
+                        if scaled_img[cy, cx] != unknown_color:
+                            for step in range(int(offset_px), 0, -1):
+                                test_cx = np.clip(x1 + int(c_front[0] + direction[0] * step), 0, img_w - 1)
+                                test_cy = np.clip(y1 + int(c_front[1] + direction[1] * step), 0, img_h - 1)
+                                if scaled_img[test_cy, test_cx] == unknown_color:
+                                    cx, cy = test_cx, test_cy
+                                    break
+                    else:
+                        # Fallback to simple centroid of gray pixels
+                        cx = x1 + int(np.mean(gray_x))
+                        cy = y1 + int(np.mean(gray_y))
+                else:
+                    # Ultimate fallback: geometric center of the cell
+                    cx = x1 + cell_w // 2
+                    cy = y1 + cell_h // 2
 
-                # Check if inside circle
+                # Check if inside exploration circle
                 dist_sq = (cx - center_x)**2 + (cy - center_y)**2
                 if dist_sq > exploration_radius_px**2:
                     continue
 
-                label = str(label_counter)
-                label_counter += 1
-
-                # Draw label directly on color_img for maximum visibility
-                text_scale = 2.0 # Increased size
-                thickness = 3 # Increased thickness
-                text_size = cv2.getTextSize(label, font, text_scale, thickness)[0]
-                text_x = cx - text_size[0] // 2
-                text_y = cy + text_size[1] // 2
-                
-                # Text with Black outline for maximum contrast
-                # Outline (Black)
-                cv2.putText(
-                    color_img, label, (text_x, text_y), font, text_scale, (0, 0, 0, 255), thickness + 5
-                )
-                # Text (Blue)
-                cv2.putText(
-                    color_img, label, (text_x, text_y), font, text_scale, (255, 0, 0, 255), thickness
-                )
-
-                # Calculate world coordinates from image coordinates
-                # robot_rel_x, robot_rel_y corresponds to robot_x, robot_y (world)
-                
-                # offset in pixels from robot
+                # Calculate world coordinates
                 off_px_x = cx - robot_rel_x
-                # y increases down in image. 
                 off_px_y = cy - robot_rel_y 
-                
-                # convert to meters
                 world_dx = off_px_x / pixels_per_meter
                 world_dy = -(off_px_y / pixels_per_meter)
-                
                 w_x = robot_x + world_dx
                 w_y = robot_y + world_dy
 
-                grid_mapping[label] = {"x": w_x, "y": w_y}
+                # Proximity filter (robot)
+                # if np.hypot(world_dx, world_dy) < 1.0:
+                #     continue
+
+                candidate_frontiers.append({
+                    "x": w_x, "y": w_y, 
+                    "cx": cx, "cy": cy
+                })
+
+        # Filter redundant frontiers (those too close to each other)
+        final_frontiers = []
+        min_dist_between_ids = 3.0 # meters
+        for cand in candidate_frontiers:
+            is_redundant = False
+            for final in final_frontiers:
+                d = np.hypot(cand["x"] - final["x"], cand["y"] - final["y"])
+                if d < min_dist_between_ids:
+                    is_redundant = True
+                    break
+            if not is_redundant:
+                final_frontiers.append(cand)
+
+        # Draw final labels and populate grid_mapping
+        grid_mapping = {}
+        label_counter = 1
+        for f in final_frontiers:
+            label = str(label_counter)
+            label_counter += 1
+            
+            # Draw label
+            text_scale = 0.2 * scale
+            thickness = max(1, int(0.3 * scale))
+            text_size = cv2.getTextSize(label, font, text_scale, thickness)[0]
+            tx = f["cx"] - text_size[0] // 2
+            ty = f["cy"] + text_size[1] // 2
+            
+            cv2.putText(color_img, label, (tx, ty), font, text_scale, (0, 0, 0, 255), thickness + 1)
+            cv2.putText(color_img, label, (tx, ty), font, text_scale, (255, 0, 0, 255), thickness)
+
+            grid_mapping[label] = {"x": f["x"], "y": f["y"]}
 
 
         blackboard["grid_mapping"] = grid_mapping

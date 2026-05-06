@@ -21,6 +21,9 @@
     model:
       repo: "mradermacher/SpaceOm-i1-GGUF"
       filename: "SpaceOm.i1-Q6_K.gguf"
+      warmup: false
+    fit:
+      enabled: false
     mmproj:
       repo: "mgonzs13/SpaceOm-GGUF"
       filename: "mmproj-SpaceOm-F16.gguf"

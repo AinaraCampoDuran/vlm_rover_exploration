@@ -105,6 +105,8 @@ def generate_launch_description():
             "GridGlobal/MinSize": "100.0",
             "GridGlobal/Eroded": "true",
             "GridGlobal/FloodFillDepth": "16",
+            "map_always_update": True,
+            "map_update_interval": 1.0,
         }
     ]
 

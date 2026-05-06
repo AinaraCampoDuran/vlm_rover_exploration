@@ -1,0 +1,12 @@
+{
+    "model": "Qwen3-VL.yaml",
+    "metrics": {
+        "area_m2": 399.99001192063105,
+        "points": 48139,
+        "dist_real_m": 82.09225706665195,
+        "dist_est_m": 84.13676990317262,
+        "duration_s": 770.5747711658478,
+        "coverage_ratio_m2_m": 4.872445054055135,
+        "avg_speed_m_s": 0.10653379806666881
+    }
+}

@@ -4,6 +4,10 @@
     model:
       repo: mradermacher/InternVL3-8B-GGUF
       filename: InternVL3-8B.Q4_K_M.gguf
+      warmup: false
+
+    fit:
+      enabled: false
 
     # Multimodal projector parameters
     mmproj:

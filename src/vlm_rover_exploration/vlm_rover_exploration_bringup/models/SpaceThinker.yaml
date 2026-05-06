@@ -20,10 +20,10 @@
       system_prompt_type: ChatML
 
     model: 
-      repo: "mradermacher/SpatialThinker-7B-i1-GGUF"
-      filename: "SpatialThinker-7B.i1-Q4_K_M.gguf"
-      
+      repo: "mradermacher/SpaceQwen3-VL-2B-Thinking-i1-GGUF"
+      filename: "SpaceQwen3-VL-2B-Thinking.i1-Q4_K_M.gguf"
+
     mmproj:
-      repo: "mradermacher/SpatialThinker-7B-GGUF"
-      filename: "SpatialThinker-7B.mmproj-f16.gguf"
+      repo: "mradermacher/SpaceQwen3-VL-2B-Thinking-GGUF"
+      filename: "SpaceQwen3-VL-2B-Thinking.mmproj-f16.gguf"
 

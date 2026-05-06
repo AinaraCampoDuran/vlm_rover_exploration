@@ -3,6 +3,9 @@
     model:
       repo: bartowski/Qwen2-VL-2B-Instruct-GGUF
       filename: Qwen2-VL-2B-Instruct-Q4_K_M.gguf
+      warmup: false
+    fit:
+      enabled: false
     mmproj:
       repo: bartowski/Qwen2-VL-2B-Instruct-GGUF
       filename: mmproj-Qwen2-VL-2B-Instruct-f16.gguf

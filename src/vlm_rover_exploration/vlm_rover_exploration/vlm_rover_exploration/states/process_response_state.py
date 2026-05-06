@@ -41,14 +41,23 @@ class ProcessResponseState(State):
         super().__init__([HAS_NEXT, HAS_NO_NEXT, ABORT])
 
     def execute(self, blackboard: Blackboard) -> str:
+        grid_mapping = blackboard["grid_mapping"]
+
+        if len(grid_mapping) == 0:
+            if self.debug:
+                self.save_debug_image(blackboard)
+            return HAS_NO_NEXT
 
         response = json.loads(blackboard["llama_response"])
-            
-        if response["is_fully_explored"]:
+        
+        # Check if Llama signaled mission completion
+        if response.get("mission_complete", False):
+            yasmin.YASMIN_LOG_INFO("VLM signaled mission completion.")
+            if self.debug:
+                self.save_debug_image(blackboard)
             return HAS_NO_NEXT
 
         target_label = str(response["target_label"])
-        grid_mapping = blackboard["grid_mapping"]
         robot_position = blackboard["robot_position"]
 
         # Validate target_label BEFORE using it
@@ -95,66 +104,64 @@ class ProcessResponseState(State):
         )
 
         if self.debug:
-            map_image = copy.deepcopy(blackboard["map_image"])
+            self.save_debug_image(blackboard, target_label)
 
-            map_resolution = blackboard["map_resolution"]
-            scale = blackboard["scale_factor"]
-            center_x = blackboard["center_x"]
-            center_y = blackboard["center_y"]
-            pixels_per_meter = int(1.0 / map_resolution) * scale
-            init_x, init_y = blackboard["initial_position"]
+        return HAS_NEXT
 
-            # Draw the full route as a polyline
+    def save_debug_image(self, blackboard: Blackboard, target_label: str = None) -> None:
+        map_image = copy.deepcopy(blackboard["map_image"])
+        map_resolution = blackboard["map_resolution"]
+        scale = blackboard["scale_factor"]
+        center_x = blackboard["center_x"]
+        center_y = blackboard["center_y"]
+        pixels_per_meter = int(1.0 / map_resolution) * scale
+        init_x, init_y = blackboard["initial_position"]
+
+        # 1. Prepare route points for full history
+        route_pts = []
+        if "route_history" in blackboard:
             route = blackboard["route_history"]
-            route_pts = []
             for point in route:
                 px = int(center_x + ((point["x"] - init_x) * pixels_per_meter))
                 py = int(center_y - ((point["y"] - init_y) * pixels_per_meter))
                 route_pts.append((px, py))
 
-            # Filter points to only connect successful ones and the current target
-            #successful_route_pts = [
-            #    pt for i, pt in enumerate(route_pts)
-            #    if route[i].get("status", "success") != "failed"
-            #]
-
-            # Draw lines connecting the successful route points (magenta)
-            #for i in range(1, len(successful_route_pts)):
-            #    cv2.line(
-            #        map_image,
-            #        successful_route_pts[i - 1],
-            #        successful_route_pts[i],
-            #        (255, 0, 255, 255),  # Magenta
-            #        max(1, scale // 2),
-            #        cv2.LINE_AA,
-            #    )
-
-            # Draw circles at each visited waypoint (cyan for success, red for failed)
-            #for i, pt in enumerate(route_pts):
-            #    # Access the status of the waypoint, defaulting to success for backwards compatibility
-            #    status = route[i].get("status", "success")
-            #    if i == 0:
-            #        color = (255, 255, 0, 255)  # Yellow=start
-            #    elif status == "failed":
-            #        color = (0, 0, 255, 255)  # Red=failed
-            #    else:
-            #        color = (0, 255, 255, 255)  # Cyan=waypoints
-            #    cv2.circle(map_image, pt, 2 * scale, color, -1)
-
             # Draw the current target waypoint (green, larger)
-            current_target = route_pts[-1]
-            cv2.circle(
-                map_image,
-                current_target,
-                3 * scale,
-                (0, 255, 0, 255),  # Green for current target
-                -1,
-            )
+            if target_label and len(route_pts) > 0:
+                current_target = route_pts[-1]
+                cv2.circle(
+                    map_image,
+                    current_target,
+                    3 * scale,
+                    (0, 255, 0, 255),  # Green for current target
+                    -1,
+                )
 
-            dir_name = f"debug_{blackboard['log_name']}"
-            os.makedirs(dir_name, exist_ok=True)
-            filename = os.path.join(dir_name, f"map_centered_{self.counter}.png")
-            cv2.imwrite(filename, map_image)
-            self.counter += 1
+        dir_name = f"debug_{blackboard['log_name']}"
+        os.makedirs(dir_name, exist_ok=True)
+        
+        filename = os.path.join(dir_name, f"map_centered_{self.counter}.png")
+        self.counter += 1
+            
+        cv2.imwrite(filename, map_image)
 
-        return HAS_NEXT
+        # 3. Save FULL route image (Overlaying all points)
+        if len(route_pts) > 1:
+            full_route_image = copy.deepcopy(map_image)
+            for i in range(1, len(route_pts)):
+                cv2.line(
+                    full_route_image,
+                    route_pts[i - 1],
+                    route_pts[i],
+                    (255, 0, 255, 255),  # Magenta
+                    max(1, scale // 2),
+                    cv2.LINE_AA,
+                )
+            
+            route_filename = os.path.join(dir_name, "full_route_history.png")
+            cv2.imwrite(route_filename, full_route_image)
+
+            # 4. Save pixel coordinates to JSON
+            pixels_file = os.path.join(dir_name, "route_pixels.json")
+            with open(pixels_file, "w") as f:
+                json.dump(route_pts, f)
