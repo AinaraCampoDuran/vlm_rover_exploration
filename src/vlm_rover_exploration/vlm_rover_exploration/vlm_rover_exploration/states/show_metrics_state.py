@@ -15,12 +15,14 @@
 
 import os
 import json
-import time
+import math
 import numpy as np
+
 from yasmin import State
 from yasmin import Blackboard
 from yasmin_ros.basic_outcomes import SUCCEED
 import yasmin
+from yasmin_ros.yasmin_node import YasminNode
 
 class ShowMetricsState(State):
     def __init__(self) -> None:
@@ -35,52 +37,52 @@ class ShowMetricsState(State):
         
         # Calculate time
         start_time = blackboard["start_time"] if "start_time" in blackboard else 0.0
-        duration = time.time() - start_time
+        current_time = YasminNode.get_instance().get_clock().now()
+        duration = (current_time - start_time).nanoseconds / 1e9
         
-        # Calculate derived metrics
-        coverage_ratio = area / dist_real if dist_real > 0 else 0.0
-        avg_speed = dist_real / duration if duration > 0 else 0.0
-        
-        # Calculate mean perplexity
-        perplexities = blackboard["perplexities"] if "perplexities" in blackboard else []
-        mean_perplexity = float(np.mean(perplexities)) if perplexities else 0.0
-        
-        model_path = os.environ.get("VLM_MODEL_CONFIG_PATH", "unknown")
-        model_name = model_path.split("/")[-1]
+        # Raw data extraction
+        inference_times = blackboard["inference_times_s"] if "inference_times_s" in blackboard else []
+        navigation_times = blackboard["navigation_times_s"] if "navigation_times_s" in blackboard else []
 
-        current_run = {
+        cpu_samples = blackboard["cpu_usage_samples"] if "cpu_usage_samples" in blackboard else []
+        gpu_samples = blackboard["gpu_usage_samples"] if "gpu_usage_samples" in blackboard else []
+        ram_samples = blackboard["ram_usage_samples"] if "ram_usage_samples" in blackboard else []
+        vram_samples = blackboard["vram_usage_samples"] if "vram_usage_samples" in blackboard else []
+        
+        route_history = blackboard["route_history"] if "route_history" in blackboard else []
+        proximity_ranks = blackboard["proximity_ranks"] if "proximity_ranks" in blackboard else []
+
+        model_path = os.environ.get("VLM_MODEL_CONFIG_PATH", "unknown")
+        model_name = model_path.split("/")[-1].replace(".yaml", "")
+
+        raw_metrics = {
             "area_m2": area,
-            "points": points,
             "dist_real_m": dist_real,
             "dist_est_m": dist_est,
+            "points_count": points,
             "duration_s": duration,
-            "coverage_ratio_m2_m": coverage_ratio,
-            "avg_speed_m_s": avg_speed,
-            "mean_perplexity": mean_perplexity
+            "inference_times_s": inference_times,
+            "navigation_times_s": navigation_times,
+            "cpu_usage_samples": cpu_samples,
+            "gpu_usage_samples": gpu_samples,
+            "ram_usage_samples": ram_samples,
+            "vram_usage_samples": vram_samples,
+            "route_history": route_history,
+            "proximity_ranks": proximity_ranks
         }
 
         # Shared results file
-        dir_name = f"debug_{blackboard['log_name']}"
-        results_file = f"{dir_name}/benchmark_results_{model_name}.json"
+        dir_name = f"{model_name}_{blackboard['log_name']}"
+        results_file = f"{dir_name}/raw_metrics_{model_name}.json"
         
         all_data = {
             "model": model_name,
-            "metrics": current_run
+            "metrics": raw_metrics
         }
 
         # Save to file
         with open(results_file, 'w') as f:
             json.dump(all_data, f, indent=4)
-        yasmin.YASMIN_LOG_INFO(f"Metrics saved to {results_file}")
-
-        # Also save to CSV
-        import csv
-        csv_file = f"{dir_name}/benchmark_results_{model_name}.csv"
-        with open(csv_file, 'w', newline='') as f:
-            fieldnames = sorted(current_run.keys())
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerow(current_run)
-        yasmin.YASMIN_LOG_INFO(f"CSV results saved to {csv_file}")
+        yasmin.YASMIN_LOG_INFO(f"Raw metrics saved to {results_file}")
         
         return SUCCEED

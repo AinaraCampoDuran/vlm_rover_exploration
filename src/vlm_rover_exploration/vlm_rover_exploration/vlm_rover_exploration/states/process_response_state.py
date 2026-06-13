@@ -57,7 +57,7 @@ class ProcessResponseState(State):
                 self.save_debug_image(blackboard)
             return HAS_NO_NEXT
 
-        target_label = str(response["target_label"])
+        target_label = str(response["target"])
         robot_position = blackboard["robot_position"]
 
         # Validate target_label BEFORE using it
@@ -73,6 +73,23 @@ class ProcessResponseState(State):
         dx = waypoint["x"] - robot_position[0]
         dy = waypoint["y"] - robot_position[1]
         target_yaw = math.atan2(dy, dx)
+        
+        # Compute Proximity Rank
+        distances = []
+        for flabel, fcoords in grid_mapping.items():
+            dist = math.hypot(fcoords["x"] - robot_position[0], fcoords["y"] - robot_position[1])
+            distances.append((dist, str(flabel)))
+        distances.sort(key=lambda x: x[0])
+        
+        rank = 1
+        for i, (dist, flabel) in enumerate(distances):
+            if flabel == target_label:
+                rank = i + 1
+                break
+        
+        if "proximity_ranks" not in blackboard:
+            blackboard["proximity_ranks"] = []
+        blackboard["proximity_ranks"].append(rank)
 
         msg = PoseStamped()
         msg.header.frame_id = "map"
@@ -137,7 +154,9 @@ class ProcessResponseState(State):
                     -1,
                 )
 
-        dir_name = f"debug_{blackboard['log_name']}"
+        model_path = os.environ.get("VLM_MODEL_CONFIG_PATH", "unknown")
+        model_name = model_path.split("/")[-1].replace(".yaml", "")
+        dir_name = f"{model_name}_{blackboard['log_name']}"
         os.makedirs(dir_name, exist_ok=True)
         
         filename = os.path.join(dir_name, f"map_centered_{self.counter}.png")

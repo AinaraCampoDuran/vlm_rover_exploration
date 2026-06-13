@@ -13,7 +13,7 @@ planner_server:
       max_on_approach_iterations: 1000
       terminal_checking_interval: 5000
       max_planning_time: 3.5
-      motion_model_for_search: "DUBIN"
+      motion_model_for_search: "REEDS_SHEPP" # Changed from DUBIN to allow reversing maneuvers
       cost_travel_multiplier: 2.0
       angle_quantization_bins: 64
       analytic_expansion_ratio: 3.5
@@ -30,7 +30,7 @@ planner_server:
       rotation_penalty: 5.0
       lookup_table_size: 20.0
       cache_obstacle_heuristic: true
-      allow_reverse_expansion: false
+      allow_reverse_expansion: true # Enabled to allow reversing to reach close points
       smooth_path: true
       debug_visualizations: true
       smoother:

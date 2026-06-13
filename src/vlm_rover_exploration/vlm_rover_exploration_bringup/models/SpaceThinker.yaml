@@ -5,7 +5,7 @@
     context:
       n_ctx: 8192
       n_batch: 512
-      n_predict: 256
+      n_predict: -1
 
     # GPU / backend parameters
     gpu:

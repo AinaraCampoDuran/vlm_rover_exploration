@@ -19,9 +19,9 @@
       system_prompt_type: ChatML
 
     model:
-      repo: "unsloth/Qwen3.5-4B-GGUF"
-      filename: "Qwen3.5-4B-Q4_K_M.gguf"
+      repo: openbmb/MiniCPM-o-4_5-gguf
+      filename: MiniCPM-o-4_5-Q4_K_M.gguf
 
     mmproj:
-      repo: "unsloth/Qwen3.5-4B-GGUF"
-      filename: "mmproj-F16.gguf"
+      repo: openbmb/MiniCPM-o-4_5-gguf
+      filename: vision/MiniCPM-o-4_5-vision-F16.gguf

@@ -14,6 +14,10 @@
 
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+import psutil
+import subprocess
+from datetime import datetime
+import numpy as np
 
 import rclpy
 import yasmin
@@ -33,9 +37,6 @@ from vlm_rover_exploration.states.process_response_state import (
     HAS_NO_NEXT,
 )
 from vlm_rover_exploration.states.show_metrics_state import ShowMetricsState
-from datetime import datetime
-import time
-import numpy as np
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import PointCloud2
 from rclpy.qos import QoSProfile, QoSDurabilityPolicy, QoSReliabilityPolicy
@@ -53,9 +54,18 @@ class MetricTracker:
         self.blackboard["total_distance_real_m"] = 0.0
         self.blackboard["points_count"] = 0
         self.blackboard["explored_area_m2"] = 0.0
-        self.blackboard["start_time"] = time.time()
-        self.blackboard["perplexities"] = []
-
+        self.blackboard["start_time"] = self.node.get_clock().now()
+        
+        # Performance metrics
+        self.blackboard["cpu_usage_samples"] = []
+        self.blackboard["ram_usage_samples"] = []
+        self.blackboard["gpu_usage_samples"] = []
+        self.blackboard["vram_usage_samples"] = []
+        
+        # Duration breakdown
+        self.blackboard["total_inference_time_s"] = 0.0
+        self.blackboard["inference_times_s"] = []
+        self.blackboard["total_navigation_time_s"] = 0.0
 
         self.node.create_subscription(Odometry, "/odom", self.odom_est_cb, 10)
         self.node.create_subscription(Odometry, "/odom_ground_truth", self.odom_real_cb, 10)
@@ -67,6 +77,39 @@ class MetricTracker:
             reliability=QoSReliabilityPolicy.RELIABLE,
         )
         self.node.create_subscription(PointCloud2, "/cloud_map", self.cloud_cb, qos_profile=map_qos)
+
+        # Timer to sample hardware metrics every 1.0 second
+        self.metrics_timer = self.node.create_timer(1.0, self.sample_hardware_metrics)
+
+    def sample_hardware_metrics(self):
+        # CPU
+        self.blackboard["cpu_usage_samples"].append(psutil.cpu_percent())
+        # RAM
+        self.blackboard["ram_usage_samples"].append(psutil.virtual_memory().used / (1024 * 1024))
+        # GPU utilization (%)
+        try:
+            result = subprocess.run(
+                ['nvidia-smi', '--query-gpu=utilization.gpu', '--format=csv,noheader,nounits'],
+                capture_output=True, text=True
+            )
+            if result.stdout.strip():
+                gpu_utils = [float(x) for x in result.stdout.strip().split('\n')]
+                self.blackboard["gpu_usage_samples"].append(max(gpu_utils))
+        except Exception:
+            pass
+        # VRAM usage (MB)
+        try:
+            result = subprocess.run(
+                ['nvidia-smi', '--query-gpu=memory.used', '--format=csv,noheader,nounits'],
+                capture_output=True, text=True
+            )
+            if result.stdout.strip():
+                for line in result.stdout.strip().split('\n'):
+                    used = float(line.strip())
+                    self.blackboard["vram_usage_samples"].append(used)
+                    break
+        except Exception:
+            pass
 
     def odom_est_cb(self, msg):
         curr = msg.pose.pose.position

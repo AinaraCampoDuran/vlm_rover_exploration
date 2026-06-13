@@ -17,6 +17,8 @@
 from yasmin_ros import ActionState
 from yasmin.blackboard import Blackboard
 from yasmin_ros.basic_outcomes import SUCCEED
+from yasmin_ros.yasmin_node import YasminNode
+
 from nav2_msgs.action import NavigateToPose
 
 
@@ -31,10 +33,22 @@ class DriveState(ActionState):
         return goal
 
     def execute(self, blackboard: Blackboard) -> str:
+        node = YasminNode.get_instance()
+        start_time = node.get_clock().now()
         outcome = super().execute(blackboard)
+        end_time = node.get_clock().now()
+        nav_duration = (end_time - start_time).nanoseconds / 1e9
+        current_nav = blackboard["total_navigation_time_s"] if "total_navigation_time_s" in blackboard else 0.0
+        blackboard["total_navigation_time_s"] = current_nav + nav_duration
+        
+        if "navigation_times_s" not in blackboard:
+            blackboard["navigation_times_s"] = []
+        blackboard["navigation_times_s"].append(nav_duration)
+        
         if "route_history" in blackboard and len(blackboard["route_history"]) > 0:
             if outcome == SUCCEED:
                 blackboard["route_history"][-1]["status"] = "success"
             else:
                 blackboard["route_history"][-1]["status"] = "failed"
+        
         return outcome

@@ -202,40 +202,6 @@ class GenerateMapImageState(MonitorState):
         robot_rel_x = int(((robot_x - init_x) / resolution) * scale) + (cropped_width * scale // 2)
         robot_rel_y = int((-(robot_y - init_y) / resolution) * scale) + (cropped_height * scale // 2)
 
-        # Draw position history
-        history_to_draw = self.position_history
-        if len(history_to_draw) > 1:
-            pts = []
-            for px, py in history_to_draw:
-                rel_x = int(((px - init_x) / resolution) * scale) + (cropped_width * scale // 2)
-                rel_y = int((-(py - init_y) / resolution) * scale) + (cropped_height * scale // 2)
-                pts.append((rel_x, rel_y))
-            
-            n_pts = len(pts)
-            max_thick = max(1, 4 * scale)
-            min_thick = max(1, 1 * scale)
-
-            for i in range(1, n_pts):
-                # if there is only one segment (first iteration), divide it to see direction
-                if n_pts == 2:
-                    p1 = np.array(pts[i-1])
-                    p2 = np.array(pts[i])
-                    num_sub = 20 
-                    for j in range(num_sub):
-                        f = (j + 1) / num_sub
-                        sub_p1 = p1 + (p2 - p1) * (j / num_sub)
-                        sub_p2 = p1 + (p2 - p1) * (f)
-                        color = (255, int(150 * (1 - f)), 255, 255)
-                        thick = int(min_thick + (max_thick - min_thick) * f)
-                        cv2.line(color_img, tuple(sub_p1.astype(int)), 
-                                 tuple(sub_p2.astype(int)), color, thick, cv2.LINE_AA)
-                else:
-                    # Comportamiento normal: un grosor constante por cada tramo
-                    frac = i / (n_pts - 1)
-                    color = (255, int(150 * (1 - frac)), 255, 255)
-                    thick = int(min_thick + (max_thick - min_thick) * frac)
-                    cv2.line(color_img, pts[i - 1], pts[i], color, thick, cv2.LINE_AA)
-
         # Draw heading
         arrow_len = 10 * scale
         dx = int(np.cos(robot_yaw) * arrow_len)
@@ -249,25 +215,9 @@ class GenerateMapImageState(MonitorState):
             tipLength=0.4,
         )
 
-        # Draw failed navigation attempts as Red 'X' marks (short-term memory: last 5 attempts)
-        #f "route_history" in blackboard and len(blackboard["route_history"]) > 0:
-        #   recent_history = blackboard["route_history"][-5:]
-        #   failed_routes = [r for r in recent_history if r.get("status") == "failed"]
-        #   for f_route in failed_routes:
-        #       f_x = f_route["x"]
-        #       f_y = f_route["y"]
-        #       f_rel_x = int(((f_x - init_x) / resolution) * scale) + (cropped_width * scale // 2)
-        #       f_rel_y = int((-(f_y - init_y) / resolution) * scale) + (cropped_height * scale // 2)
-        #       
-        #       thick = max(2, int(1.5 * scale))
-        #       length = 5 * scale
-        #       cross_color = (0, 0, 255, 255) # Red BGRA
-        #       cv2.line(color_img, (f_rel_x - length, f_rel_y - length), (f_rel_x + length, f_rel_y + length), cross_color, thick)
-        #       cv2.line(color_img, (f_rel_x - length, f_rel_y + length), (f_rel_x + length, f_rel_y - length), cross_color, thick)
-
         # Draw Grid Overlay
         # Define fixed cell size in meters
-        cell_size_meters = 2.0  # Increased to space out labels
+        cell_size_meters = 2.0  # Safe cell size to balance density and spacing
         blackboard["cell_size_meters"] = cell_size_meters
 
         pixels_per_cell = int(cell_size_meters / resolution) * scale
@@ -416,8 +366,8 @@ class GenerateMapImageState(MonitorState):
                         else:
                             direction = np.array([0, 0])
                         
-                        # Move the label slightly away from the boundary into the gray zone
-                        offset_px = 5.0 * scale
+                        # Move the label further away from the boundary into the gray zone (deep unexplored area)
+                        offset_px = 12.0 * scale
                         cx = np.clip(x1 + int(c_front[0] + direction[0] * offset_px), 0, img_w - 1)
                         cy = np.clip(y1 + int(c_front[1] + direction[1] * offset_px), 0, img_h - 1)
                         
@@ -453,17 +403,24 @@ class GenerateMapImageState(MonitorState):
                 w_y = robot_y + world_dy
 
                 # Proximity filter (robot)
-                # if np.hypot(world_dx, world_dy) < 1.0:
-                #     continue
+                dist_to_robot = np.hypot(world_dx, world_dy)
+                #if dist_to_robot < 2.0:
+                #    continue
 
                 candidate_frontiers.append({
                     "x": w_x, "y": w_y, 
-                    "cx": cx, "cy": cy
+                    "cx": cx, "cy": cy,
+                    "dist_to_robot": dist_to_robot
                 })
+
+        # Sort candidates by distance to the robot in descending order
+        # so that when filtering redundant close frontiers, we always prioritize keeping
+        # the ones that are further away from the robot.
+        #candidate_frontiers.sort(key=lambda f: f["dist_to_robot"], reverse=True)
 
         # Filter redundant frontiers (those too close to each other)
         final_frontiers = []
-        min_dist_between_ids = 3.0 # meters
+        min_dist_between_ids = 5.0 # meters
         for cand in candidate_frontiers:
             is_redundant = False
             for final in final_frontiers:
@@ -481,14 +438,16 @@ class GenerateMapImageState(MonitorState):
             label = str(label_counter)
             label_counter += 1
             
-            # Draw label
-            text_scale = 0.2 * scale
-            thickness = max(1, int(0.3 * scale))
+            # Draw label (Increased size and contrast)
+            text_scale = 0.3 * scale
+            thickness = max(2, int(0.6 * scale))
             text_size = cv2.getTextSize(label, font, text_scale, thickness)[0]
             tx = f["cx"] - text_size[0] // 2
             ty = f["cy"] + text_size[1] // 2
             
-            cv2.putText(color_img, label, (tx, ty), font, text_scale, (0, 0, 0, 255), thickness + 1)
+            # Draw thick black border for high contrast
+            cv2.putText(color_img, label, (tx, ty), font, text_scale, (0, 0, 0, 255), thickness + 4)
+            # Draw inner color (Blue)
             cv2.putText(color_img, label, (tx, ty), font, text_scale, (255, 0, 0, 255), thickness)
 
             grid_mapping[label] = {"x": f["x"], "y": f["y"]}
