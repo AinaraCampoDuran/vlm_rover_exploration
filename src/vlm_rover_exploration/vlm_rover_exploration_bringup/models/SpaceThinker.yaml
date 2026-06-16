@@ -3,13 +3,13 @@
   ros__parameters:
       # Context / inference parameters
     context:
-      n_ctx: 8192
-      n_batch: 512
-      n_predict: -1
+      n_ctx: 16384
+      n_batch: 2048
+      n_predict: 2048
 
     # GPU / backend parameters
     gpu:
-      n_gpu_layers: 20
+      n_gpu_layers: 30
 
     # CPU parameters
     cpu:

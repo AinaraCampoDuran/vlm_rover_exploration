@@ -17,7 +17,9 @@ import os
 from launch import LaunchDescription
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
-from launch.actions import IncludeLaunchDescription, SetEnvironmentVariable, TimerAction, DeclareLaunchArgument
+from launch.actions import IncludeLaunchDescription, SetEnvironmentVariable, TimerAction, DeclareLaunchArgument, RegisterEventHandler, EmitEvent
+from launch.event_handlers import OnProcessExit
+from launch.events import Shutdown
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 
@@ -28,7 +30,7 @@ def generate_launch_description():
     vlm_model = LaunchConfiguration("vlm_model")
     vlm_model_arg = DeclareLaunchArgument(
         "vlm_model",
-        default_value="Qwen3-VL.yaml",
+        default_value="SpaceThinker.yaml",
         description="Name of the VLM model config file in the models directory"
     )
 
@@ -101,7 +103,17 @@ def generate_launch_description():
 
     delayed_exploration_sm_cmd = TimerAction(
         period=15.0,
-        actions=[exploration_sm_cmd]
+        actions=[
+            exploration_sm_cmd,
+            RegisterEventHandler(
+                OnProcessExit(
+                    target_action=exploration_sm_cmd,
+                    on_exit=[
+                        EmitEvent(event=Shutdown())
+                    ]
+                )
+            )
+        ]
     )
 
     yasmin_viewer_cmd = Node(

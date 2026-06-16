@@ -1,0 +1,65 @@
+{
+    "model": "MiniCPM",
+    "metrics": {
+        "model_name": "MiniCPM",
+        "area_m2": 499.5200148868562,
+        "dist_real_m": 106.8273884244198,
+        "error_odom": 0.5470044338572393,
+        "total_steps": 16,
+        "nav_failures": 0,
+        "duration_s": 637.66,
+        "inference_time_s": 115.438,
+        "navigation_time_s": 510.85,
+        "coverage_ratio_m2_m": 4.675954567964243,
+        "area_m2_per_step": 31.22000093042851,
+        "inference_time_s_stats": {
+            "avg": 7.214875,
+            "std": 1.1574241808321615,
+            "min": 4.663,
+            "max": 9.138
+        },
+        "navigation_time_s_stats": {
+            "avg": 31.928125,
+            "std": 11.254824953519936,
+            "min": 21.276,
+            "max": 60.183
+        },
+        "cpu_percent_stats": {
+            "avg": 207.67133367399077,
+            "std": 125.62448325449206,
+            "min": 0.0,
+            "max": 374.7
+        },
+        "gpu_percent_stats": {
+            "avg": 8.06973058637084,
+            "std": 18.83471067563462,
+            "min": 0.0,
+            "max": 100.0
+        },
+        "ram_mb_stats": {
+            "avg": 5119.158531154189,
+            "std": 5198.76050184574,
+            "min": 1260.59,
+            "max": 13214.88671875
+        },
+        "vram_mb_stats": {
+            "avg": 6926.855901890649,
+            "std": 11.766449891194206,
+            "min": 6842.0,
+            "max": 6943.0
+        },
+        "proximity_rank_stats": {
+            "avg": 1.875,
+            "std": 1.4523687548277813,
+            "min": 1.0,
+            "max": 6.0
+        },
+        "jump_distance_m_stats": {
+            "avg": 6.239616211241341,
+            "std": 3.036066311749439,
+            "min": 2.8299359148186483,
+            "max": 14.146318325297864
+        },
+        "predicted_labels": "['1', '3', '7', '2', '1', '1', '2', '3', '3', '3', '3', '2', '1', '1', '1', '1']"
+    }
+}

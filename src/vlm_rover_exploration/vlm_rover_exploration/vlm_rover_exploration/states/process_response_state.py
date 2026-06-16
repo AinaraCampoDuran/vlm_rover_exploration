@@ -43,15 +43,9 @@ class ProcessResponseState(State):
     def execute(self, blackboard: Blackboard) -> str:
         grid_mapping = blackboard["grid_mapping"]
 
-        if len(grid_mapping) == 0:
-            if self.debug:
-                self.save_debug_image(blackboard)
-            return HAS_NO_NEXT
-
         response = json.loads(blackboard["llama_response"])
-        
         # Check if Llama signaled mission completion
-        if response.get("mission_complete", False):
+        if response.get("mission_complete", False) or response.get("target") is None:
             yasmin.YASMIN_LOG_INFO("VLM signaled mission completion.")
             if self.debug:
                 self.save_debug_image(blackboard)
@@ -75,18 +69,12 @@ class ProcessResponseState(State):
         target_yaw = math.atan2(dy, dx)
         
         # Compute Proximity Rank
-        distances = []
-        for flabel, fcoords in grid_mapping.items():
-            dist = math.hypot(fcoords["x"] - robot_position[0], fcoords["y"] - robot_position[1])
-            distances.append((dist, str(flabel)))
-        distances.sort(key=lambda x: x[0])
+        distances = sorted([
+            (math.hypot(c["x"] - robot_position[0], c["y"] - robot_position[1]), str(lbl))
+            for lbl, c in grid_mapping.items()
+        ])
         
-        rank = 1
-        for i, (dist, flabel) in enumerate(distances):
-            if flabel == target_label:
-                rank = i + 1
-                break
-        
+        rank = next((i + 1 for i, (_, flabel) in enumerate(distances) if flabel == target_label), 1)
         if "proximity_ranks" not in blackboard:
             blackboard["proximity_ranks"] = []
         blackboard["proximity_ranks"].append(rank)
@@ -107,18 +95,11 @@ class ProcessResponseState(State):
         # Route history tracking
         if "route_history" not in blackboard:
             blackboard["route_history"] = []
-
-        # Add robot's current position as the start of the route (first iteration)
-        robot_position = blackboard["robot_position"]
+        
         if len(blackboard["route_history"]) == 0:
-            blackboard["route_history"].append(
-                {"x": robot_position[0], "y": robot_position[1], "label": "start"}
-            )
+            blackboard["route_history"].append({"x": robot_position[0], "y": robot_position[1], "label": "start"})
 
-        # Append the new target waypoint to the route
-        blackboard["route_history"].append(
-            {"x": waypoint["x"], "y": waypoint["y"], "label": target_label}
-        )
+        blackboard["route_history"].append({"x": waypoint["x"], "y": waypoint["y"], "label": target_label})
 
         if self.debug:
             self.save_debug_image(blackboard, target_label)
@@ -131,40 +112,54 @@ class ProcessResponseState(State):
         scale = blackboard["scale_factor"]
         center_x = blackboard["center_x"]
         center_y = blackboard["center_y"]
-        pixels_per_meter = int(1.0 / map_resolution) * scale
+        pixels_per_meter = (1.0 / map_resolution) * scale
         init_x, init_y = blackboard["initial_position"]
 
-        # 1. Prepare route points for full history
-        route_pts = []
-        if "route_history" in blackboard:
-            route = blackboard["route_history"]
-            for point in route:
-                px = int(center_x + ((point["x"] - init_x) * pixels_per_meter))
-                py = int(center_y - ((point["y"] - init_y) * pixels_per_meter))
-                route_pts.append((px, py))
+        # Prepare route points for full history
+        route_list = blackboard["route_history"] if "route_history" in blackboard else []
+        route_pts = [
+            (
+                int(center_x + ((pt["x"] - init_x) * pixels_per_meter)),
+                int(center_y - ((pt["y"] - init_y) * pixels_per_meter))
+            )
+            for pt in route_list
+        ]
 
-            # Draw the current target waypoint (green, larger)
-            if target_label and len(route_pts) > 0:
-                current_target = route_pts[-1]
+        # Draw ONLY the immediately previous target in red if it failed
+        if len(route_list) >= 2:
+            prev_pt = route_list[-2]
+            if prev_pt.get("status") == "failed":
                 cv2.circle(
                     map_image,
-                    current_target,
+                    route_pts[-2],
                     3 * scale,
-                    (0, 255, 0, 255),  # Green for current target
+                    (0, 0, 255, 255),  # Red for failed target
                     -1,
                 )
 
+        # Draw the current target waypoint (green, larger)
+        if target_label and route_pts:
+            cv2.circle(
+                map_image,
+                route_pts[-1],
+                3 * scale,
+                (0, 255, 0, 255),  # Green for current target
+                -1,
+            )
+
         model_path = os.environ.get("VLM_MODEL_CONFIG_PATH", "unknown")
-        model_name = model_path.split("/")[-1].replace(".yaml", "")
-        dir_name = f"{model_name}_{blackboard['log_name']}"
+        model_name = os.path.basename(model_path).replace(".yaml", "")
+        log_name = blackboard["log_name"] if "log_name" in blackboard else "log"
+        dir_name = f"{model_name}_{log_name}"
         os.makedirs(dir_name, exist_ok=True)
         
-        filename = os.path.join(dir_name, f"map_centered_{self.counter}.png")
+        filename = os.path.join(dir_name, f"map_{self.counter}.png")
         self.counter += 1
+        blackboard["debug_image_counter"] = self.counter
             
         cv2.imwrite(filename, map_image)
 
-        # 3. Save FULL route image (Overlaying all points)
+        # Save FULL route image (Overlaying all points)
         if len(route_pts) > 1:
             full_route_image = copy.deepcopy(map_image)
             for i in range(1, len(route_pts)):
@@ -180,7 +175,7 @@ class ProcessResponseState(State):
             route_filename = os.path.join(dir_name, "full_route_history.png")
             cv2.imwrite(route_filename, full_route_image)
 
-            # 4. Save pixel coordinates to JSON
+            # Save pixel coordinates to JSON
             pixels_file = os.path.join(dir_name, "route_pixels.json")
             with open(pixels_file, "w") as f:
                 json.dump(route_pts, f)

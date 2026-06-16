@@ -24,13 +24,12 @@ from llama_msgs.action import GenerateChatCompletions
 from cv_bridge import CvBridge
 import os
 import json
-from datetime import datetime
-import shutil
+
 import math
 import psutil
 import subprocess
 import threading
-import time
+import shutil
 
 class LlamaState(ActionState):
 
@@ -46,6 +45,7 @@ class LlamaState(ActionState):
         self.node = YasminNode.get_instance()
         self.is_inferring = False
         self.inference_thread = None
+        self.target_pid = None
 
     def _get_vram_usage(self, pid):
         try:
@@ -66,39 +66,52 @@ class LlamaState(ActionState):
             pass
         return 0.0
 
+    def _get_gpu_utilization(self):
+        try:
+            result = subprocess.run(
+                ['nvidia-smi', '--query-gpu=utilization.gpu', '--format=csv,noheader,nounits'],
+                capture_output=True, text=True
+            )
+            if result.stdout.strip():
+                gpu_utils = [float(x) for x in result.stdout.strip().split('\n')]
+                return max(gpu_utils)
+        except Exception:
+            pass
+        return 0.0
+
     def _monitor_resources(self, blackboard):
-        target_pid = None
-        for proc in psutil.process_iter(['pid', 'name']):
-            try:
-                name = proc.info['name']
-                if name and ("llava_node" in name or "llama_node" in name):
-                    target_pid = proc.info['pid']
-                    break
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
+        if not self.target_pid:
+            for proc in psutil.process_iter(['pid', 'name']):
+                try:
+                    name = proc.info['name']
+                    if name and ("llava_node" in name or "llama_node" in name):
+                        self.target_pid = proc.info['pid']
+                        break
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
         
-        if not target_pid:
+        if not self.target_pid:
             return
 
-        if "cpu_usage_samples" not in blackboard:
-            blackboard["cpu_usage_samples"] = []
-        if "ram_usage_samples" not in blackboard:
-            blackboard["ram_usage_samples"] = []
-        if "vram_usage_samples" not in blackboard:
-            blackboard["vram_usage_samples"] = []
+        for key in ["cpu_usage_samples", "ram_usage_samples", "vram_usage_samples", "gpu_usage_samples"]:
+            if key not in blackboard:
+                blackboard[key] = []
 
         try:
-            p = psutil.Process(target_pid)
+            p = psutil.Process(self.target_pid)
             while self.is_inferring:
                 try:
                     cpu = p.cpu_percent(interval=0.2)
                     ram_mb = p.memory_info().rss / (1024 * 1024)
-                    vram_mb = self._get_vram_usage(target_pid)
+                    vram_mb = self._get_vram_usage(self.target_pid)
+                    gpu_util = self._get_gpu_utilization()
                     
                     blackboard["cpu_usage_samples"].append(cpu)
                     blackboard["ram_usage_samples"].append(round(ram_mb, 2))
                     blackboard["vram_usage_samples"].append(vram_mb)
+                    blackboard["gpu_usage_samples"].append(gpu_util)
                 except psutil.NoSuchProcess:
+                    self.target_pid = None
                     break
         except Exception:
             pass
@@ -118,20 +131,17 @@ class LlamaState(ActionState):
         grid_mapping = blackboard["grid_mapping"]
         distances_text = ""
         if grid_mapping:
-            distances_list = []
-            for frontier_id, coords in grid_mapping.items():
-                f_x = coords["x"]
-                f_y = coords["y"]
-                distance = math.hypot(robot_x - f_x, robot_y - f_y)
-                distances_list.append(f"- ID {frontier_id}: {distance:.2f} meters")
+            distances_list = [
+                f"- ID {fid}: {math.hypot(robot_x - c['x'], robot_y - c['y']):.2f} meters" 
+                for fid, c in grid_mapping.items()
+            ]
             distances_text = "Euclidean distance from the robot to each frontier:\n" + "\n".join(distances_list) + "\n"
 
-        radius = blackboard["image_width_m"] // 2
-        
+
         if "previous_global_strategy" in blackboard:
             previous_strategy = blackboard["previous_global_strategy"]
             strategy_instruction = f"- PREVIOUS STRATEGY: In the last step, you chose this strategy: '{previous_strategy}'. You should generally continue this strategy if it remains efficient, but you are free to change or break it if you justify the reason based on the current map state.\n"
-            trend_global_instruction = "Evaluate if the PREVIOUS STRATEGY is still optimal. If so, continue it. If not, explicitly justify why you are changing it."
+            trend_global_instruction = "Evaluate if the PREVIOUS STRATEGY is still optimal according to the current unexplored areas. If so, continue it. If not, justify why you are changing it."
         else:
             strategy_instruction = ""
             trend_global_instruction = "Choose a pattern that makes logical sense given the robot's current position and heading."
@@ -165,20 +175,20 @@ class LlamaState(ActionState):
                     f"Euclidean distance from the robot to each frontier: {distances_text}. Do not estimate distances, use these values.\n"
                     "OUTPUT JSON:\n"
                     "- reasoning: [string] You MUST structure your reasoning exactly using this 8-step template (include the 'Step X:' labels). You MUST complete ALL 8 steps in full before closing this string field:\n"
-                    "  Step 1: Describe ONLY the robot's position and orientation on the map using the crosshair (TOP, BOTTOM, LEFT, RIGHT).\n"
+                    "  Step 1: Describe ONLY the robot's position and orientation on the map using the crosshair.\n"
                     "  Step 2: INITIAL_CANDIDATES: [] (list all visible IDs).\n"
-                    "  Step 3: Identify and list ALL the different unexplored areas (gray color) using the crosshair.\n"
-                    f"  Step 4: Based on the unexplored areas from step 3, choose ONLY ONE global exploration pattern (spiral, perimeter, sweep, or zig-zag) and ONLY ONE direction (clockwise or counter-clockwise) to cover those areas efficiently. {trend_global_instruction}. Justify your decision.\n"
-                    "  Step 5: Follow this exact logical sequence: 1) State the specific direction the robot must go next using the crosshair (e.g., TOP-RIGHT, BOTTOM-LEFT) to execute the global exploration pattern and direction chosen in step 4. 2) Identify which IDs are located in that specific direction. 3) Select a maximum of 3 of those IDs as GLOBAL_CANDIDATES: [list of 3 IDs or None].\n"
+                    "  Step 3: Identify and list ALL the different unexplored areas (gray color) using the crosshair. Briefly describe their shape and size.\n"
+                    f"  Step 4: Based on the unexplored areas from step 3, choose ONLY ONE global exploration pattern (spiral, perimeter, sweep, or zig-zag) and ONLY ONE direction (clockwise or counter-clockwise) to cover those areas efficiently. {trend_global_instruction}. Explain how the chosen pattern and direction will help to cover the unexplored areas in an efficient way.\n"
+                    f"  Step 5: Follow this exact logical sequence: 1) State the specific direction the robot must go next using the crosshair to execute the global pattern and direction chosen in step 4. 2) Identify and list ALL the IDs that are located in that specific direction. 3) Select up to 3 of those IDs as GLOBAL_CANDIDATES. GLOBAL_CANDIDATES: [list of up to 3 IDs or None].\n"
                     f"  Step 6: Select the single best candidate from GLOBAL_CANDIDATES. First, you MUST explicitly state the exact numerical distances (provided above) for EACH ID in GLOBAL_CANDIDATES. Then, evaluate them strictly against ALL three criteria: "
                     "1) Information Gain: how much new terrain will be discovered based on the size/openness of unexplored gray area near the ID, "
                     "2) Travel cost: compare their numerical distances, and "
-                    f"3) Heading alignment: compare the target's location with the robot's orientation to evaluate turn cost; avoid very close curves. Select the best candidate according to these three criteria: GLOBAL_FINALIST: [single ID or None].\n"
-                    "  Step 7: Scan for small, isolated gray gaps (such as any small patches identified in Step 3. A 'Hole' is defined strictly as a residual, dead-end gray patch that is deeply enclosed or surrounded on its sides by the white explored space. It must contain a very low concentration of frontier IDs (usually just 1). DO NOT evaluate distance or travel cost in this step; if a hole exists anywhere on the map, you MUST select its ID as LOCAL_FINALIST. If no candidates meet this strict dead-end criteria, you MUST set LOCAL_FINALIST: None.\n"
-                    "  Step 8: Final Decision. Compare GLOBAL_FINALIST and LOCAL_FINALIST (if it exists). You must perform a cost-benefit analysis to decide if a local detour is justified. Weigh the immediate distance to the LOCAL_FINALIST against the risk of leaving an uncleaned area behind that might force a long backtracking journey later. This is the ONLY step where the final target is selected. Output: Winning ID: [single ID or None].\n"
+                    f"3) Heading alignment: compare the target's location with the robot's orientation to evaluate turn cost. Select the best candidate according to these three criteria. GLOBAL_FINALIST: [single ID or None].\n"
+                    "  Step 7: Scan carefully for any 'holes', 'residual gray patches', or 'unexplored strips' that break the global pattern and direction. A true hole or residual patch MUST be an unexplored gray area that is disconnected from the main continuous unexplored mass. It may be completely surrounded by explored white space OR it may touch the outer perimeter of the circular map boundary. Normal corners or edges along the main continuous unexplored area are NOT holes. First, explicitly identify and list ALL the IDs that fit the descriptions. Then, compare their exact numerical distances (provided above) and select the CLOSEST one as the LOCAL_FINALIST. If none exist, you MUST set LOCAL_FINALIST: None.\n"
+                    "  Step 8: Final Decision. Compare GLOBAL_FINALIST and LOCAL_FINALIST (if it exists). You must perform a cost-benefit analysis to decide if a local detour is justified. You are ALLOWED to completely break and override the global strategy (the pattern and direction chosen in Step 4) if choosing the LOCAL_FINALIST is worth it to clean up the area now and avoid a long, unnecessary backtracking journey in the future. Weigh the distances carefully. This is the ONLY step where the final target is selected. Output: Winning ID: [single ID or None].\n"
                     "- global_strategy: [string] The exact pattern and direction chosen in Step 4. Format strictly as 'PATTERN DIRECTION' (e.g. 'spiral clockwise', 'perimeter counter-clockwise').\n"
                     "- target: [integer] ID of the selected frontier (None if no frontier is selected).\n"
-                    "- mission_complete: [boolean] Set to true ONLY if INITIAL_CANDIDATES is None (meaning there are absolutely no unexplored areas left on the map and exploration is 100% finished). If there are any visible numbered IDs or active frontiers, the mission is NOT complete, and you MUST set mission_complete to false. Crucial: NEVER set mission_complete to true if a winning target ID was chosen!\n\n"
+                    "- mission_complete: [boolean] Set to true ONLY if INITIAL_CANDIDATES is None (meaning there are absolutely no unexplored areas left on the map and exploration is 100% finished). If there are any visible numbered IDs or active frontiers, the mission is NOT complete, and you MUST set mission_complete to false. Crucial: NEVER set mission_complete to true if a winning target ID was chosen!\n"
                 )
             ),
         ]
@@ -187,7 +197,7 @@ class LlamaState(ActionState):
         goal.images.append(self.cv_bridge.cv2_to_imgmsg(blackboard["map_image"]))
 
         # Sampling configuration and structured response schema
-        goal.sampling_config.temp = 0.2
+        goal.sampling_config.temp = 0.0
 
         properties = {
             "reasoning": {"type": "string"},
@@ -204,6 +214,12 @@ class LlamaState(ActionState):
         }
 
         goal.sampling_config.grammar_schema = json.dumps(grammar_dict)
+
+        blackboard["prompt_data"] = {
+            "system_prompt": goal.messages[0].content,
+            "user_prompt": goal.messages[1].content,
+            "temp": goal.sampling_config.temp,
+        }
 
         return goal
 
@@ -229,63 +245,69 @@ class LlamaState(ActionState):
             yasmin.YASMIN_LOG_INFO(f"LLaMA response:\n{response}")
             
             # Save the JSON generated by the model in a single file            
+            reasoning_content = getattr(result.choices[0].message, "reasoning_content", None)
             try:
-                data = json.loads(response)
-                # If there's extracted reasoning from the model's think block, populate it into the reasoning field
-                if hasattr(result.choices[0].message, "reasoning_content") and result.choices[0].message.reasoning_content:
-                    data["reasoning"] = result.choices[0].message.reasoning_content
-                    # Write it back to the blackboard response as well so other states/logs see it
-                    blackboard["llama_response"] = json.dumps(data)
+                # Try direct parse first, then extract JSON from mixed content
+                try:
+                    data = json.loads(response)
+                except json.JSONDecodeError:
+                    start_idx = response.find('{')
+                    end_idx = response.rfind('}')
+                    if start_idx != -1 and end_idx > start_idx:
+                        data = json.loads(response[start_idx:end_idx+1])
+                    else:
+                        raise
+                
+                if reasoning_content:
+                    data["reasoning_content"] = reasoning_content
+                
+                # Unconditionally update the blackboard with the clean extracted JSON
+                blackboard["llama_response"] = json.dumps(data)
                 
                 if "global_strategy" in data:
                     blackboard["previous_global_strategy"] = data["global_strategy"]
             except Exception:
                 data = {"raw_response": response}
-                if hasattr(result.choices[0].message, "reasoning_content") and result.choices[0].message.reasoning_content:
-                    data["reasoning_content"] = result.choices[0].message.reasoning_content
+                if reasoning_content:
+                    data["reasoning_content"] = reasoning_content
+                blackboard["llama_response"] = json.dumps(data)
             
-            # Get the path to the debug directory and make sure it exists
             model_path = os.environ.get("VLM_MODEL_CONFIG_PATH", "unknown")
-            model_name = model_path.split("/")[-1].replace(".yaml", "")
-            dir_name = f"{model_name}_{blackboard['log_name']}"
+            model_name = os.path.basename(model_path).replace(".yaml", "")
+            log_name = blackboard["log_name"] if "log_name" in blackboard else "log"
+            dir_name = f"{model_name}_{log_name}"
             os.makedirs(dir_name, exist_ok=True)
             
             # Save response
             with open(os.path.join(dir_name, "llama_responses.json"), "a") as f:
                 f.write(json.dumps(data) + "\n")
                 
-            # Copy prompt and other context for debugging
-            llama_goal = self.create_llama_goal(blackboard)
-            prompt_data = {
-                "system_prompt": llama_goal.messages[0].content,
-                "user_prompt": llama_goal.messages[1].content,
-                "temp": llama_goal.sampling_config.temp,
-            }
-            prompt_config_path = os.path.join(dir_name, "prompt_config.json")
-            prompts_list = []
-            if os.path.exists(prompt_config_path):
-                try:
-                    with open(prompt_config_path, "r") as f:
-                        prompts_list = json.load(f)
-                        if not isinstance(prompts_list, list):
-                            prompts_list = [prompts_list]
-                except Exception:
-                    pass
-            
-            if len(prompts_list) < 2:
-                prompts_list.append(prompt_data)
-                with open(prompt_config_path, "w") as f:
-                    json.dump(prompts_list, f, indent=4)
+            # Copy prompt and other context for debugging (up to 2 prompts: initial and with previous strategy)
+            prompts_saved = blackboard["prompts_saved_count"] if "prompts_saved_count" in blackboard else 0
+            if prompts_saved < 2:
+                prompt_config_path = os.path.join(dir_name, "prompt_config.json")
+                prompts_list = []
+                if os.path.exists(prompt_config_path):
+                    try:
+                        with open(prompt_config_path, "r") as f:
+                            prompts_list = json.load(f)
+                            if not isinstance(prompts_list, list):
+                                prompts_list = [prompts_list]
+                    except Exception:
+                        pass
                 
-            # Copy model configuration
-            try:
-                model_config_path = os.environ.get("VLM_MODEL_CONFIG_PATH")
-                if model_config_path and os.path.exists(model_config_path):
-                    shutil.copy(model_config_path, os.path.join(dir_name, "model_config.yaml"))
-                else:
-                    yasmin.YASMIN_LOG_WARN("VLM_MODEL_CONFIG_PATH not found or invalid.")
-            except Exception as e:
-                yasmin.YASMIN_LOG_WARN(f"Could not copy model configuration: {e}")
+                if len(prompts_list) < 2:
+                    prompts_list.append(blackboard["prompt_data"] if "prompt_data" in blackboard else {})
+                    with open(prompt_config_path, "w") as f:
+                        json.dump(prompts_list, f, indent=4)
+                    blackboard["prompts_saved_count"] = len(prompts_list)
+                    
+                    # Copy model configuration only once when creating the first prompt
+                    if len(prompts_list) == 1:
+                        if model_path != "unknown" and os.path.exists(model_path):
+                            shutil.copy(model_path, os.path.join(dir_name, "model_config.yaml"))
+                        else:
+                            yasmin.YASMIN_LOG_WARN("VLM_MODEL_CONFIG_PATH not found or invalid.")
 
         except Exception as e:
             yasmin.YASMIN_LOG_ERROR(f"Failed to process LLaMA result: {e}")

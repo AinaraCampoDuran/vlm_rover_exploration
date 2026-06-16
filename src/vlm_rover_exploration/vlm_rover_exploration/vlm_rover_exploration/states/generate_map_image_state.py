@@ -18,6 +18,7 @@
 import cv2
 import time
 import numpy as np
+import os
 
 import rclpy
 from rclpy.qos import QoSProfile, QoSDurabilityPolicy, QoSReliabilityPolicy
@@ -29,17 +30,14 @@ from tf_transformations import euler_from_quaternion
 import yasmin
 from yasmin import Blackboard
 from yasmin_ros import MonitorState
-from yasmin_ros.basic_outcomes import SUCCEED
+from yasmin_ros.basic_outcomes import SUCCEED, CANCEL
 from yasmin_ros.yasmin_node import YasminNode
-
 
 class GenerateMapImageState(MonitorState):
 
     def __init__(self) -> None:
         node = YasminNode.get_instance()
-        self.counter = 0
-        self.initial_position = None  # Will be set on first call
-        self.position_history = []
+        self.initial_position = None  
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, node)
 
@@ -56,11 +54,11 @@ class GenerateMapImageState(MonitorState):
             self.monitor_handler,
             qos=map_qos,
             msg_queue=1,
-            timeout=60, # Aumentado de 10 a 60 para evitar timeouts al arrancar Gazebo/RTAB-Map
+            timeout=60, 
         )
 
     def execute(self, blackboard: Blackboard) -> str:
-        # Evita que la imagen de Llava y el grid map se desincronicen
+        # Avoid desync between llava image and grid map
         blackboard["is_map_monitor_active"] = True
         try:
             return super().execute(blackboard)
@@ -112,17 +110,6 @@ class GenerateMapImageState(MonitorState):
                 f"Initial robot position set to: ({robot_x:.2f}, {robot_y:.2f})"
             )
         blackboard["initial_position"] = self.initial_position
-        
-        # Add to history if moved enough (> 0.1 meters)
-        if not self.position_history:
-            self.position_history.append((robot_x, robot_y))
-        else:
-            last_x, last_y = self.position_history[-1]
-            if np.hypot(robot_x - last_x, robot_y - last_y) > 0.1:
-                self.position_history.append((robot_x, robot_y))
-                # Keep only last 5 points
-                if len(self.position_history) > 5:
-                    self.position_history.pop(0)
 
         init_x, init_y = self.initial_position
 
@@ -231,9 +218,7 @@ class GenerateMapImageState(MonitorState):
         cell_w = img_w // grid_cols
         cell_h = img_h // grid_rows
 
-        grid_mapping = {}
-        label_counter = 1
-        
+
         # Draw Quadrants and labels
         color_img_h, color_img_w = color_img.shape[:2]
         
@@ -241,6 +226,10 @@ class GenerateMapImageState(MonitorState):
         cross_overlay = color_img.copy()
         cv2.line(cross_overlay, (0, center_y), (color_img_w, center_y), (255, 255, 0, 255), max(1, scale))
         cv2.line(cross_overlay, (center_x, 0), (center_x, color_img_h), (255, 255, 0, 255), max(1, scale))
+        # Draw 45-degree diagonal lines to separate the 8 quadrants
+        max_dim = max(color_img_w, color_img_h)
+        cv2.line(cross_overlay, (center_x - max_dim, center_y - max_dim), (center_x + max_dim, center_y + max_dim), (255, 255, 0, 255), max(1, scale))
+        cv2.line(cross_overlay, (center_x - max_dim, center_y + max_dim), (center_x + max_dim, center_y - max_dim), (255, 255, 0, 255), max(1, scale))
         cv2.addWeighted(cross_overlay, 0.4, color_img, 0.6, 0, color_img)
 
         font = cv2.FONT_HERSHEY_SIMPLEX
@@ -281,6 +270,38 @@ class GenerateMapImageState(MonitorState):
         tx, ty = center_x + exploration_radius_px + text_offset, center_y + th//2
         cv2.putText(color_img, right_text, (tx, ty), font, text_scale, (0, 0, 0, 255), text_thickness + 1)
         cv2.putText(color_img, right_text, (tx, ty), font, text_scale, (0, 255, 0, 255), text_thickness)
+
+        # Quadrant labels at 45 degree angles (dx = dy = r * 0.707)
+        dx = int(exploration_radius_px * 0.707)
+        dy = int(exploration_radius_px * 0.707)
+
+        # TOP-LEFT
+        tl_text = "TOP-LEFT"
+        tw, th = cv2.getTextSize(tl_text, font, text_scale, text_thickness)[0]
+        tx, ty = center_x - dx - text_offset - tw, center_y - dy - text_offset
+        cv2.putText(color_img, tl_text, (tx, ty), font, text_scale, (0, 0, 0, 255), text_thickness + 1)
+        cv2.putText(color_img, tl_text, (tx, ty), font, text_scale, (0, 255, 0, 255), text_thickness)
+
+        # TOP-RIGHT
+        tr_text = "TOP-RIGHT"
+        tw, th = cv2.getTextSize(tr_text, font, text_scale, text_thickness)[0]
+        tx, ty = center_x + dx + text_offset, center_y - dy - text_offset
+        cv2.putText(color_img, tr_text, (tx, ty), font, text_scale, (0, 0, 0, 255), text_thickness + 1)
+        cv2.putText(color_img, tr_text, (tx, ty), font, text_scale, (0, 255, 0, 255), text_thickness)
+
+        # BOTTOM-LEFT
+        bl_text = "BOTTOM-LEFT"
+        tw, th = cv2.getTextSize(bl_text, font, text_scale, text_thickness)[0]
+        tx, ty = center_x - dx - text_offset - tw, center_y + dy + text_offset + th
+        cv2.putText(color_img, bl_text, (tx, ty), font, text_scale, (0, 0, 0, 255), text_thickness + 1)
+        cv2.putText(color_img, bl_text, (tx, ty), font, text_scale, (0, 255, 0, 255), text_thickness)
+
+        # BOTTOM-RIGHT
+        br_text = "BOTTOM-RIGHT"
+        tw, th = cv2.getTextSize(br_text, font, text_scale, text_thickness)[0]
+        tx, ty = center_x + dx + text_offset, center_y + dy + text_offset + th
+        cv2.putText(color_img, br_text, (tx, ty), font, text_scale, (0, 0, 0, 255), text_thickness + 1)
+        cv2.putText(color_img, br_text, (tx, ty), font, text_scale, (0, 255, 0, 255), text_thickness)
 
         # Draw the robot as a red dot proportional to its real size (approx. 0.5m diameter)
         robot_radius_m = 0.25 
@@ -331,10 +352,10 @@ class GenerateMapImageState(MonitorState):
                 num_occupied = np.count_nonzero(cell_region == occupied_color)
                 num_free = np.count_nonzero(cell_region == free_color)
 
-                # Require both unknown AND free pixels, with at least 8% unknown
+                # Require both unknown AND free pixels, with at least 10% unknown
                 # Also, MUST NOT have occupied pixels (obstacles)
                 total_pixels = cell_region.size
-                min_free_ratio = 0.08
+                min_free_ratio = 0.1
                 if not (num_unknown > 0 and num_free > 0) or num_occupied > 0:
                     continue
                 if (num_unknown / total_pixels) < min_free_ratio:
@@ -345,7 +366,7 @@ class GenerateMapImageState(MonitorState):
                 free_y, free_x = np.where(cell_region == free_color)
                 
                 if len(gray_x) > 0 and len(free_x) > 0:
-                    # 1. Find the "frontier boundary" (gray pixels adjacent to white)
+                    # Find the "frontier boundary" (gray pixels adjacent to white)
                     kernel = np.ones((3,3), np.uint8)
                     free_mask = (cell_region == free_color).astype(np.uint8)
                     dilated_free = cv2.dilate(free_mask, kernel)
@@ -402,10 +423,7 @@ class GenerateMapImageState(MonitorState):
                 w_x = robot_x + world_dx
                 w_y = robot_y + world_dy
 
-                # Proximity filter (robot)
                 dist_to_robot = np.hypot(world_dx, world_dy)
-                #if dist_to_robot < 2.0:
-                #    continue
 
                 candidate_frontiers.append({
                     "x": w_x, "y": w_y, 
@@ -413,10 +431,7 @@ class GenerateMapImageState(MonitorState):
                     "dist_to_robot": dist_to_robot
                 })
 
-        # Sort candidates by distance to the robot in descending order
-        # so that when filtering redundant close frontiers, we always prioritize keeping
-        # the ones that are further away from the robot.
-        #candidate_frontiers.sort(key=lambda f: f["dist_to_robot"], reverse=True)
+
 
         # Filter redundant frontiers (those too close to each other)
         final_frontiers = []
@@ -460,6 +475,15 @@ class GenerateMapImageState(MonitorState):
         blackboard["map_image"] = color_img
         yasmin.YASMIN_LOG_INFO("Saved image to blackboard as 'map_image'")
 
-        cv2.imwrite("map_image.png", color_img)
+        if not grid_mapping:
+            yasmin.YASMIN_LOG_INFO("Mission Complete.")
+            model_path = os.environ.get("VLM_MODEL_CONFIG_PATH", "unknown")
+            model_name = model_path.split("/")[-1].replace(".yaml", "")
+            dir_name = f"{model_name}_{blackboard['log_name']}"
+            os.makedirs(dir_name, exist_ok=True)
+            img_path = os.path.join(dir_name, f"map_{blackboard['debug_image_counter']}.png")
+
+            cv2.imwrite(img_path, color_img)            
+            return CANCEL
 
         return SUCCEED

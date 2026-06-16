@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
 
 import os
-import sys
 import glob
 import json
-import argparse
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 import math
 
 def process_metrics(model_name, raw_metrics):
@@ -87,21 +83,21 @@ def process_metrics(model_name, raw_metrics):
     return complex_metrics
 
 def main():
-    directorios = [
-        "Qwen3-VL_20260601_114749",
-    ]
-
-    files = []
-    for d in directorios:
-        search_pattern = os.path.join(d, "raw_metrics_*.json")
-        matched = glob.glob(search_pattern)
-        if matched:
-            files.extend(matched)
-        else:
-            print(f"No JSONs found in {d}")
+    # Search for all raw_metrics_*.json files dynamically in the workspace
+    # It assumes the script is run from the workspace root (e.g. ros2_ws)
+    files = glob.glob("*/raw_metrics_*.json")
     
+    # If not found with the simple glob, try a recursive search avoiding large ROS 2 dirs
     if not files:
-        print("\nNo JSONs found in any of the provided directories.")
+        for root, dirs, filenames in os.walk("."):
+            if any(x in root for x in ['/build', '/install', '/log', '/src']):
+                continue
+            for f in filenames:
+                if f.startswith("raw_metrics_") and f.endswith(".json"):
+                    files.append(os.path.join(root, f))
+                    
+    if not files:
+        print("\nNo JSONs found in the workspace.")
         return
 
     data_records = []
