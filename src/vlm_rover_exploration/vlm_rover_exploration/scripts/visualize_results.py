@@ -80,8 +80,7 @@ def make_composite_bar_chart(df, metric_configs, title, filename, model_order, m
         fig.delaxes(axes[j])
         
     plt.suptitle(title, fontsize=18, fontweight='bold', y=0.98)
-    plt.tight_layout()
-    plt.subplots_adjust(top=0.88)
+    plt.tight_layout(rect=[0, 0, 1, 0.92])
     plt.savefig(filename, dpi=300)
     plt.close()
 
@@ -132,8 +131,7 @@ def make_composite_boxplot(df, metric_configs, title, filename, model_order, mod
         fig.delaxes(axes[j])
         
     plt.suptitle(title, fontsize=18, fontweight='bold', y=0.98)
-    plt.tight_layout()
-    plt.subplots_adjust(top=0.88)
+    plt.tight_layout(rect=[0, 0, 1, 0.92])
     plt.savefig(filename, dpi=300)
     plt.close()
 
@@ -257,55 +255,54 @@ def main():
     # ─── Group 1: Hardware Performance ──────────────────────────────
     perf_metrics = [
         ('cpu_percent_stats_avg',         'Avg CPU Usage',                       '%'),
-        ('gpu_percent_stats_avg',         'Avg GPU Utilization',                 '%'),
+        ('gpu_percent_stats_avg',         'Avg GPU Usage',                 '%'),
         ('ram_mb_stats_avg',              'Avg RAM Usage',                       'MB'),
         ('vram_mb_stats_avg',             'Avg VRAM Usage',                      'MB'),
     ]
     perf_metrics = [m for m in perf_metrics if m[0] in df.columns]
 
     # ─── Group 2: Time & Latency ────────────────────────────────────
+    if 'duration_s' in df.columns and 'total_steps' in df.columns:
+        df['duration_s_per_step'] = df['duration_s'] / df['total_steps']
+
     time_metrics = [
-        ('duration_s',                    'Total Mission Duration',              's'),
-        ('navigation_time_s',             'Total Navigation Time',               's'),
-        ('inference_time_s',              'Total Inference Time',                's'),
-        ('inference_time_s_stats_avg',    'Avg Inference Latency / Step',        's'),
-        ('navigation_time_s_stats_avg',   'Avg Navigation Time / Step',          's'),
+        ('duration_s_per_step',           'Avg Mission',     's'),
+        ('inference_time_s_stats_avg',    'Avg Inference', 's'),
+        ('navigation_time_s_stats_avg',   'Avg Navigation',   's'),
     ]
     time_metrics = [m for m in time_metrics if m[0] in df.columns]
 
     # ─── Group 3: Exploration & Reliability ─────────────────────────
     expl_metrics = [
-        ('area_m2',                       'Total Area Explored',                 'm²'),
-        ('dist_real_m',                   'Total Distance Traveled',             'm'),
         ('coverage_ratio_m2_m',           'Coverage Ratio (Efficiency)',         'm² / m'),
         ('area_m2_per_step',              'Area Explored per Step',              'm² / step'),
         ('total_steps',                   'Total Decision Steps',                'Steps'),
         ('jump_distance_m_stats_avg',     'Avg Target Jump Distance',            'm'),
-        ('proximity_rank_stats_avg',      'Avg Proximity Rank Selected',         'Rank'),
+        ('proximity_rank_stats_avg',      'Avg Proximity Rank',         'Rank'),
         ('nav_failures',                  'Navigation Failures',                 'Count'),
         ('error_odom',                    'Odometry Error',                      'm'),
     ]
     expl_metrics = [m for m in expl_metrics if m[0] in df.columns]
 
     print("Generating Composite Bar Charts (Averages)...")
-    make_composite_bar_chart(df, perf_metrics, "Hardware & Latency Comparison", 
+    make_composite_bar_chart(df, perf_metrics, "Hardware Resources (Averages)", 
                              os.path.join(base_dir, "grouped_averages_performance.png"), 
                              model_order, model_colors)
-    make_composite_bar_chart(df, time_metrics, "Time & Reliability Comparison", 
+    make_composite_bar_chart(df, time_metrics, "Latency and Processing Time per Step (Averages)", 
                              os.path.join(base_dir, "grouped_averages_time.png"), 
                              model_order, model_colors)
-    make_composite_bar_chart(df, expl_metrics, "Exploration & Behavior Comparison", 
+    make_composite_bar_chart(df, expl_metrics, "Exploration Metrics (Averages)", 
                              os.path.join(base_dir, "grouped_averages_exploration.png"), 
                              model_order, model_colors)
 
     print("Generating Composite Boxplots (Distributions per Run)...")
-    make_composite_boxplot(df, perf_metrics, "Hardware & Latency Distributions", 
+    make_composite_boxplot(df, perf_metrics, "Hardware Resources (Distributions)", 
                            os.path.join(base_dir, "grouped_distributions_performance.png"), 
                            model_order, model_colors)
-    make_composite_boxplot(df, time_metrics, "Time & Reliability Distributions", 
+    make_composite_boxplot(df, time_metrics, "Latency and Processing Time per Step (Distributions)", 
                            os.path.join(base_dir, "grouped_distributions_time.png"), 
                            model_order, model_colors)
-    make_composite_boxplot(df, expl_metrics, "Exploration & Behavior Distributions", 
+    make_composite_boxplot(df, expl_metrics, "Exploration Metrics (Distributions)", 
                            os.path.join(base_dir, "grouped_distributions_exploration.png"), 
                            model_order, model_colors)
 

@@ -188,8 +188,7 @@ class LlamaState(ActionState):
                     "  Step 8: Final Decision. Compare GLOBAL_FINALIST and LOCAL_FINALIST (if it exists). You must perform a cost-benefit analysis to decide if a local detour is justified. You are ALLOWED to completely break and override the global strategy (the pattern and direction chosen in Step 4) if choosing the LOCAL_FINALIST is worth it to clean up the area now and avoid a long, unnecessary backtracking journey in the future. Weigh the distances carefully. This is the ONLY step where the final target is selected. Output: Winning ID: [single ID or None].\n"
                     "- global_strategy: [string] The exact pattern and direction chosen in Step 4. Format strictly as 'PATTERN DIRECTION' (e.g. 'spiral clockwise', 'perimeter counter-clockwise').\n"
                     "- target: [integer] ID of the selected frontier (None if no frontier is selected).\n"
-                    "- mission_complete: [boolean] Set to true ONLY if INITIAL_CANDIDATES is None (meaning there are absolutely no unexplored areas left on the map and exploration is 100% finished). If there are any visible numbered IDs or active frontiers, the mission is NOT complete, and you MUST set mission_complete to false. Crucial: NEVER set mission_complete to true if a winning target ID was chosen!\n"
-                )
+                                    )
             ),
         ]
 
@@ -203,9 +202,8 @@ class LlamaState(ActionState):
             "reasoning": {"type": "string"},
             "global_strategy": {"type": "string"},
             "target": {"type": "integer"},
-            "mission_complete": {"type": "boolean"}
         }
-        required = ["reasoning", "global_strategy", "target", "mission_complete"]
+        required = ["reasoning", "global_strategy", "target"]
 
         grammar_dict = {
             "type": "object",

@@ -1,0 +1,65 @@
+{
+    "model": "Qwen3-VL",
+    "metrics": {
+        "model_name": "Qwen3-VL",
+        "area_m2": 458.7000136703254,
+        "dist_real_m": 89.71559053801768,
+        "error_odom": 2.8782949631398793,
+        "total_steps": 14,
+        "nav_failures": 2,
+        "duration_s": 557.734,
+        "inference_time_s": 122.874,
+        "navigation_time_s": 422.009,
+        "coverage_ratio_m2_m": 5.112823879545749,
+        "area_m2_per_step": 32.76428669073753,
+        "inference_time_s_stats": {
+            "avg": 8.776714285714286,
+            "std": 0.8867854007248741,
+            "min": 7.2,
+            "max": 9.993
+        },
+        "navigation_time_s_stats": {
+            "avg": 30.1435,
+            "std": 8.381205979963232,
+            "min": 19.783,
+            "max": 50.024
+        },
+        "cpu_percent_stats": {
+            "avg": 226.46413612565445,
+            "std": 102.60490645659087,
+            "min": 40.0,
+            "max": 353.0
+        },
+        "gpu_percent_stats": {
+            "avg": 61.4869109947644,
+            "std": 27.314650699104092,
+            "min": 0.0,
+            "max": 100.0
+        },
+        "ram_mb_stats": {
+            "avg": 1727.3807984293196,
+            "std": 24.791201472212048,
+            "min": 1404.88,
+            "max": 1781.74
+        },
+        "vram_mb_stats": {
+            "avg": 4563.052356020942,
+            "std": 15.352486102507934,
+            "min": 4166.0,
+            "max": 4564.0
+        },
+        "proximity_rank_stats": {
+            "avg": 2.0,
+            "std": 1.1338934190276817,
+            "min": 1.0,
+            "max": 5.0
+        },
+        "jump_distance_m_stats": {
+            "avg": 6.6898417502722305,
+            "std": 2.9745844121648934,
+            "min": 2.5608833087571674,
+            "max": 14.50716022120958
+        },
+        "predicted_labels": "['3', '2', '1', '1', '1', '2', '3', '3', '4', '2', '4', '3', '2', '1']"
+    }
+}

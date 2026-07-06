@@ -1,0 +1,65 @@
+{
+    "model": "InternVL3",
+    "metrics": {
+        "model_name": "InternVL3",
+        "area_m2": 466.47001390188944,
+        "dist_real_m": 102.95305894470457,
+        "error_odom": 0.6088619828890955,
+        "total_steps": 11,
+        "nav_failures": 0,
+        "duration_s": 619.1,
+        "inference_time_s": 80.199,
+        "navigation_time_s": 527.582,
+        "coverage_ratio_m2_m": 4.530899991543015,
+        "area_m2_per_step": 42.406364900171766,
+        "inference_time_s_stats": {
+            "avg": 7.290818181818182,
+            "std": 1.8856291363015747,
+            "min": 4.434,
+            "max": 10.8
+        },
+        "navigation_time_s_stats": {
+            "avg": 47.961999999999996,
+            "std": 30.677395216555258,
+            "min": 21.562,
+            "max": 133.309
+        },
+        "cpu_percent_stats": {
+            "avg": 367.9376963350785,
+            "std": 113.526097020204,
+            "min": 0.0,
+            "max": 508.8
+        },
+        "gpu_percent_stats": {
+            "avg": 36.789267015706805,
+            "std": 20.601907093823247,
+            "min": 0.0,
+            "max": 100.0
+        },
+        "ram_mb_stats": {
+            "avg": 1417.181662303665,
+            "std": 25.071425955894032,
+            "min": 1199.88,
+            "max": 1430.12
+        },
+        "vram_mb_stats": {
+            "avg": 4296.065445026178,
+            "std": 3.7627145272356257,
+            "min": 4226.0,
+            "max": 4298.0
+        },
+        "proximity_rank_stats": {
+            "avg": 1.7272727272727273,
+            "std": 1.212878551284212,
+            "min": 1.0,
+            "max": 5.0
+        },
+        "jump_distance_m_stats": {
+            "avg": 7.547455923310647,
+            "std": 4.079721037640034,
+            "min": 1.7415223485179467,
+            "max": 14.91249078061293
+        },
+        "predicted_labels": "['2', '1', '2', '7', '6', '2', '1', '1', '2', '1', '1']"
+    }
+}

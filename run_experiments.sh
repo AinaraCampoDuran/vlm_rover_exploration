@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Configuration
-MODELS=("Qwen3-VL.yaml" "InternVL3.yaml" "MiniCPM.yaml")
-REPETITIONS=1
+MODELS=("MiniCPM.yaml", "Qwen3_VL.yaml", "InternVL3.yaml")
+REPETITIONS=10
 TIMEOUT="20m"
 
 # Ensure ROS 2 environment is sourced
