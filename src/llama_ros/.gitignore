@@ -1,0 +1,9 @@
+.vscode
+__pycache__
+.cache
+compile_commands.json
+
+.pre-commit-config.yaml
+
+.venv/
+uv.lock

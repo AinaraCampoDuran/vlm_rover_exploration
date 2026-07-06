@@ -1,0 +1,55 @@
+uint32 seed                         4294967295                      # the seed used to initialize llama_sampler (4294967295 = LLAMA_DEFAULT_SEED, i.e. random)
+int32 n_prev                        64                              # number of previous tokens to remember
+int32 n_probs                       0                               # if greater than 0, output the probabilities of top n_probs tokens
+int32 min_keep                      0                               # 0 = disabled, otherwise samplers should return at least min_keep tokens
+
+bool ignore_eos                     false                           # ignore end of stream token and continue generating (implies --logit-bias 2-inf)
+bool no_perf                        false                           # disable performance metrics
+bool timing_per_token               false                           # collect per-token timing data
+LogitBiasArray logit_bias                                           # logit bias for specific tokens
+LogitBiasArray logit_bias_eog                                       # pre-calculated logit biases for EOG tokens
+
+float32 temp                        0.80                            # temperature
+float32 dynatemp_range              0.0                             # 0.0 = disabled
+float32 dynatemp_exponent           1.0                             # controls how entropy maps to temperature in dynamic temperature sampler
+
+int32 top_k                         40                              # top-k sampling (0.0 = disabled)
+float32 top_p                       0.95                            # top-p sampling (1.0 = disabled)
+float32 min_p                       0.05                            # min-p sampling (0.0 = disabled)
+float32 top_n_sigma                 -1.0                            # top-n sampling (-1.0 = disabled)
+float32 xtc_probability             0.00                            # xtc sampling (0.0 = disable)
+float32 xtc_threshold               0.10                            # xtc sampling threshold (> 0.5 disables XTC)
+float32 typical_p                   1.00                            # locally typical sampling, parameter p (1.0 = disabled)
+
+int32 penalty_last_n                64                              # last n tokens consider for penalize (0 = disable penalty, -1 = context size)
+float32 penalty_repeat              1.00                            # penalize repeat sequence of tokens (1.0 = disabled)
+float32 penalty_freq                0.00                            # repeat alpha frequency penalty (0.0 = disable)
+float32 penalty_present             0.00                            # repeat alpha presence penalty (0.0 = disabled)
+
+float32 dry_multiplier              0.0                             # DRY repetition penalty for tokens extending repetition (0.0 = disabled)
+float32 dry_base                    1.75                            # multiplier * base ^ (length of sequence before token - allowed length) (0.0 = disabled)
+int32 dry_allowed_length            2                               # tokens extending repetitions beyond this receive penalty
+int32 dry_penalty_last_n            -1                              # how many tokens to scan for repetitions (0 = disable penalty, -1 = context size)
+string[] dry_sequence_breakers      ["\\n", ":", "\\\"", "*"]       # default sequence breakers for DRY  
+
+float32 adaptive_target             -1.0                            # adaptive-p target probability (valid range 0.0 to 1.0; negative = disabled)
+float32 adaptive_decay              0.90                            # adaptive-p EMA decay for adaptation (valid range 0.0 - 0.99)
+
+int32 mirostat                      0                               # Mirostat sampling (0 = disabled, 1 = mirostat, 2 = mirostat 2.0)
+float32 mirostat_eta                0.10                            # Mirostat learning rate, parameter eta
+float32 mirostat_tau                5.0                             # Mirostat target entropy, parameter tau
+
+string samplers_sequence            "edskypmxt"                     # PENALTIES, DRY, TOP_N_SIGMA, TOP_K, TYPICAL_P, TOP_P, MIN_P, XTC, TEMP
+
+string grammar                      ""                              # optional BNF-like grammar to constrain sampling
+string grammar_schema               ""                              # grammar schema that defines a JSON BNF grammar
+bool grammar_lazy                                                   # whether to use lazy grammar
+GrammarTrigger[] grammar_triggers                                   # triggers for lazy grammar
+int32[] preserved_tokens                                            # tokens to preserve
+bool backend_sampling               false                           # use backend (hardware-accelerated) sampling if available
+
+int32 reasoning_budget              -1                              # token budget for reasoning (-1 = disabled, >= 0 = token budget)
+int32[] reasoning_budget_start                                      # start tag token sequence for reasoning budget (auto-populated from chat template if empty)
+int32[] reasoning_budget_end                                        # end tag token sequence for reasoning budget (auto-populated from chat template if empty)
+int32[] reasoning_budget_forced                                     # forced sequence (message + end tag) for reasoning budget (auto-populated if empty)
+string reasoning_budget_message     ""                              # message injected before end tag when reasoning budget is exhausted
