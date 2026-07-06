@@ -1,4 +1,4 @@
-# VLM Rover Exploration
+# VLM Rover Exploration 🤖 🚀
 
 Este repositorio contiene el código y los recursos necesarios para desplegar y evaluar la exploración autónoma de un rover lunar utilizando Modelos de Lenguaje Visual (VLMs) en ROS 2 y una Maquina de Estados Finita en YASMIN. 
 
