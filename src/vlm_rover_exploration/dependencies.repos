@@ -2,9 +2,12 @@ repositories:
   yasmin:
     type: git
     url: https://github.com/uleroboticsgroup/yasmin
+    version: main
   llama_ros:
     type: git
     url: https://github.com/mgonzs13/llama_ros
+    version: main
   ros2_rover:
     type: git
     url: https://github.com/mgonzs13/ros2_rover
+    version: main

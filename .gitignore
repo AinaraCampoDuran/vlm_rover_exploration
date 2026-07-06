@@ -5,9 +5,6 @@ install
 log
 src/llama_ros
 src/yasmin
-notas
 llm_judge.py
-cleanup_ros.sh
 run_sim.sh
 test_sim.launch.py
-Plantilla_TFM_MURIA
