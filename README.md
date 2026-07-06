@@ -81,3 +81,20 @@ Si deseas lanzar la exploración con un modelo específico manualmente en lugar 
 ```bash
 ros2 launch vlm_rover_exploration_bringup vlm_rover_exploration.launch.py vlm_model:=MiniCPM.yaml
 ```
+
+### Análisis y Visualización de Resultados
+Tras finalizar las ejecuciones de los experimentos, puedes procesar los datos recolectados y generar gráficos comparativos utilizando los scripts proporcionados en el paquete `vlm_rover_exploration`. 
+
+Asegúrate de ejecutar ambos scripts desde la **raíz del workspace** (`~/ros2_ws`):
+
+1. **Procesar métricas (Benchmark)**:
+   Este script busca todos los archivos de resultados brutos (`raw_metrics_*.json`), calcula estadísticas detalladas y genera resúmenes para cada modelo.
+   ```bash
+   python3 src/vlm_rover_exploration/vlm_rover_exploration/scripts/benchmark.py
+   ```
+
+2. **Generar gráficos y visualizaciones**:
+   Una vez procesadas las métricas, utiliza este script para generar gráficas de barras, diagramas de caja (boxplots) y frecuencias de estrategias de los modelos. Las imágenes resultantes se guardarán en un nuevo directorio llamado `benchmark_visualizations/`.
+   ```bash
+   python3 src/vlm_rover_exploration/vlm_rover_exploration/scripts/visualize_results.py
+   ```
