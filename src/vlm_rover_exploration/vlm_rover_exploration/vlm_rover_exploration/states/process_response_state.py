@@ -24,13 +24,13 @@ import os
 
 from yasmin import State
 from yasmin.blackboard import Blackboard
-from yasmin_ros.basic_outcomes import ABORT
+from yasmin_ros.basic_outcomes import SUCCEED, CANCEL, ABORT
 
 from geometry_msgs.msg import PoseStamped
 from tf_transformations import quaternion_from_euler
 
-HAS_NEXT = "has_next"
-HAS_NO_NEXT = "has_no_next"
+#HAS_NEXT = "has_next"
+#HAS_NO_NEXT = "has_no_next"
 
 
 class ProcessResponseState(State):
@@ -38,18 +38,19 @@ class ProcessResponseState(State):
     def __init__(self, debug: bool = True) -> None:
         self.counter = 0
         self.debug = debug
-        super().__init__([HAS_NEXT, HAS_NO_NEXT, ABORT])
+        #super().__init__([HAS_NEXT, HAS_NO_NEXT, ABORT])
+        super().__init__([SUCCEED, CANCEL, ABORT])
 
     def execute(self, blackboard: Blackboard) -> str:
         grid_mapping = blackboard["grid_mapping"]
 
         response = json.loads(blackboard["llama_response"])
         # Check if Llama signaled mission completion
-        if response.get("mission_complete", False) or response.get("target") is None:
-            yasmin.YASMIN_LOG_INFO("VLM signaled mission completion.")
-            if self.debug:
-                self.save_debug_image(blackboard)
-            return HAS_NO_NEXT
+        #if response.get("mission_complete", False) or response.get("target") is None:
+        #    yasmin.YASMIN_LOG_INFO("VLM signaled mission completion.")
+        #    if self.debug:
+        #        self.save_debug_image(blackboard)
+        #    return HAS_NO_NEXT
 
         target_label = str(response["target"])
         robot_position = blackboard["robot_position"]
@@ -104,7 +105,8 @@ class ProcessResponseState(State):
         if self.debug:
             self.save_debug_image(blackboard, target_label)
 
-        return HAS_NEXT
+        #return HAS_NEXT
+        return SUCCEED
 
     def save_debug_image(self, blackboard: Blackboard, target_label: str = None) -> None:
         map_image = copy.deepcopy(blackboard["map_image"])

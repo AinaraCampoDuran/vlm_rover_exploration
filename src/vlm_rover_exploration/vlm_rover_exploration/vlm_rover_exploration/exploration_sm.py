@@ -29,11 +29,12 @@ from yasmin_ros.yasmin_node import YasminNode
 from vlm_rover_exploration.states.generate_map_image_state import GenerateMapImageState
 from vlm_rover_exploration.states.drive_state import DriveState
 from vlm_rover_exploration.states.llama_state import LlamaState
-from vlm_rover_exploration.states.process_response_state import (
-    ProcessResponseState,
-    HAS_NEXT,
-    HAS_NO_NEXT,
-)
+# from vlm_rover_exploration.states.process_response_state import (
+#     ProcessResponseState,
+#     HAS_NEXT,
+#     HAS_NO_NEXT,
+# )
+from vlm_rover_exploration.states.process_response_state import ProcessResponseState
 from vlm_rover_exploration.states.show_metrics_state import ShowMetricsState
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import PointCloud2
@@ -136,9 +137,9 @@ def main():
         "PROCESSING_RESPONSE",
         ProcessResponseState(),
         transitions={
-            HAS_NEXT: "DRIVING_TO_WAYPOINT",
-            HAS_NO_NEXT: "SHOW_METRICS",
+            SUCCEED: "DRIVING_TO_WAYPOINT",
             ABORT: "GENERATING_MAP_IMAGE", # If the label is not found
+            CANCEL: "SHOW_METRICS",
         },
     )
 
